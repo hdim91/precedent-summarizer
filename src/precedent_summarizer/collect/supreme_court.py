@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from precedent_summarizer.clients.law_go_kr import LawGoKrClient, ORG_SUPREME_COURT, save_raw_response
-from precedent_summarizer.common.security import MaskedRequestError, install_log_masking
+from precedent_summarizer.common.security import MaskedRequestError, install_log_masking, mask_secrets
 from precedent_summarizer.config import get_settings
 
 KST = timezone(timedelta(hours=9))
@@ -18,9 +18,17 @@ FIELDS = ('판시사항', '판결요지', '참조조문', '참조판례', '판�
 LOG = logging.getLogger(__name__)
 
 
+class DetailUnavailable(Exception):
+    """The API explicitly reports that it does not provide this precedent."""
+
+
 def parse_body(content, key):
     try:
         body = json.loads(content)
+        if (key == 'PrecService' and isinstance(body, dict)
+                and isinstance(body.get('Law'), str)
+                and body['Law'].startswith('일치하는 판례가 없습니다')):
+            raise DetailUnavailable(mask_secrets(body['Law']))
         if not isinstance(body, dict) or not isinstance(body.get(key), dict):
             raise ValueError('Missing response envelope')
         result = body[key]
@@ -50,14 +58,15 @@ def rows_of(body):
 def atomic_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + '.tmp')
-    tmp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding='utf-8', newline='\n')
+    tmp.write_text(mask_secrets(json.dumps(value, ensure_ascii=False, indent=2)), encoding='utf-8', newline='\n')
     tmp.replace(path)
 
 
-def scan_data(data_dir):
+def scan_data(data_dir, *, files=None):
     """Count unsafe OC parameters, never expose matched values or file contents."""
     count = 0
-    for path in data_dir.rglob('*') if data_dir.exists() else []:
+    paths = files if files is not None else (data_dir.rglob('*') if data_dir.exists() else [])
+    for path in set(paths):
         if path.is_file() and not path.name.startswith('.env'):
             for match in re.finditer(rb'[?&]OC=([^&\s\"\'<>]+)', path.read_bytes(), re.I):
                 count += match.group(1) != b'***'
@@ -71,9 +80,11 @@ class Collector:
         self.day = self.now.strftime('%Y%m%d')
         self.consecutive = 0
         self.stopped = False
+        self.written = set()
         self.report = dict(run_started=self.now.isoformat(), run_finished=None, api_total_cnt=None,
                            year_slices=[], sum_year_items=0, manifest_count=0, detail_cached=0,
-                           detail_new=0, detail_failed=0, failures=[], empty_field_counts={f: 0 for f in FIELDS})
+                           detail_new=0, detail_failed=0, detail_unavailable=0, by_data_source={},
+                           security_scan_unmasked_oc=0, failures=[], empty_field_counts={f: 0 for f in FIELDS})
 
     def failure(self, exc, stage, prec_id=''):
         safe = exc if isinstance(exc, MaskedRequestError) else MaskedRequestError(exc)
@@ -84,10 +95,13 @@ class Collector:
 
     def fetch(self, path, key, request):
         if path.exists():
-            return parse_body(path.read_bytes(), key)
+            body = parse_body(path.read_bytes(), key)
+            self.consecutive = 0
+            return body
         response = request()
         body = parse_body(response.content, key)
         save_raw_response(response, path)
+        self.written.add(path)
         self.consecutive = 0
         return body
 
@@ -145,7 +159,7 @@ class Collector:
                         for row in rows:
                             ident = str(row['판례일련번호'])
                             manifest.setdefault(ident, dict(prec_id=ident, case_no=row.get('사건번호', ''),
-                                decision_date=row.get('선고일자', ''), year=year, list_file=path.relative_to(self.root).as_posix()))
+                                decision_date=row.get('선고일자', ''), data_source=row.get('데이터출처명', ''), year=year, list_file=path.relative_to(self.root).as_posix()))
                     except (MaskedRequestError, ValueError, OSError) as exc:
                         self.failure(exc, 'list')
                 info['snapshot_complete'] = self.complete(snap)
@@ -156,7 +170,8 @@ class Collector:
             LOG.info('Year %s: %s/%s', year, info['items'], info['total_cnt'])
         return list(manifest.values())
 
-    def run(self, from_year=1947, to_year=None, stage='all', limit=None, recent=1):
+    def run(self, from_year=1947, to_year=None, stage='all', limit=None, recent=1,
+            *, recheck_unavailable=False, full_security_scan=False):
         # Each invocation owns its counters, including repeated use by callers.
         self.__init__(self.client, self.root, now=self.now)
         to_year = to_year or self.now.year
@@ -181,18 +196,42 @@ class Collector:
                 tmp = manifest_path.with_suffix('.jsonl.tmp')
                 tmp.write_text(''.join(json.dumps(r, ensure_ascii=False) + '\n' for r in records), encoding='utf-8', newline='\n')
                 tmp.replace(manifest_path)
+                self.written.add(manifest_path)
             self.report['manifest_count'] = len(records)
+            for record in records:
+                source = record.get('data_source', '')
+                counts = self.report['by_data_source'].setdefault(
+                    source, dict(listed=0, cached=0, unavailable=0, failed=0))
+                counts['listed'] += 1
             attempts = 0
             if stage != 'list':
                 for record in records:
                     if self.stopped:
                         break
+                    counts = self.report['by_data_source'][record.get('data_source', '')]
                     ident = str(record['prec_id'])
                     if not ident.isdigit():
+                        counts['failed'] += 1
+                        self.report['detail_failed'] += 1
                         self.failure(ValueError('Invalid precedent ID'), 'detail')
                         continue
                     path = self.root / 'prec_detail' / f'{ident}.json'
                     cached = path.exists()
+                    marker = self.root / 'prec_detail_unavailable' / f'{ident}.json'
+                    if not cached and marker.exists() and not recheck_unavailable:
+                        try:
+                            saved = json.loads(marker.read_text(encoding='utf-8'))
+                            if (not isinstance(saved, dict) or saved.get('prec_id') != ident
+                                    or not all(k in saved for k in ('data_source', 'checked_at', 'api_message'))):
+                                raise ValueError('Invalid unavailable marker')
+                            self.consecutive = 0
+                            self.report['detail_unavailable'] += 1
+                            counts['unavailable'] += 1
+                        except (ValueError, OSError) as exc:
+                            self.report['detail_failed'] += 1
+                            counts['failed'] += 1
+                            self.failure(exc, 'detail', ident)
+                        continue
                     if not cached and limit is not None and attempts >= limit:
                         continue
                     try:
@@ -200,10 +239,25 @@ class Collector:
                             attempts += 1
                         body = self.fetch(path, 'PrecService', lambda: self.client.get_precedent_detail(ident))
                         self.report['detail_cached'] += 1
+                        counts['cached'] += 1
                         self.report['detail_new'] += not cached
                         for field in FIELDS:
                             self.report['empty_field_counts'][field] += not bool(body.get(field))
+                    except DetailUnavailable as exc:
+                        try:
+                            if not marker.exists():
+                                atomic_json(marker, dict(prec_id=ident, data_source=record.get('data_source', ''),
+                                    checked_at=datetime.now(KST).isoformat(), api_message=str(exc)))
+                                self.written.add(marker)
+                            self.consecutive = 0
+                            self.report['detail_unavailable'] += 1
+                            counts['unavailable'] += 1
+                        except OSError as write_exc:
+                            self.report['detail_failed'] += 1
+                            counts['failed'] += 1
+                            self.failure(write_exc, 'detail', ident)
                     except (MaskedRequestError, ValueError, OSError) as exc:
+                        counts['failed'] += 1
                         self.report['detail_failed'] += 1
                         self.failure(exc, 'detail', ident)
         except KeyboardInterrupt:
@@ -213,10 +267,13 @@ class Collector:
         finally:
             self.report['sum_year_items'] = sum(y['items'] for y in self.report['year_slices'])
             self.report['run_finished'] = datetime.now(KST).isoformat()
-            violations = scan_data(self.root.parent)
+            out = self.root / 'reports' / f'collect_{self.now:%Y%m%d_%H%M}.json'
+            atomic_json(out, self.report)
+            scan_files = self.written | {p for p in out.parent.rglob('*') if p.is_file()}
+            violations = scan_data(self.root.parent, files=None if full_security_scan else scan_files)
+            self.report['security_scan_unmasked_oc'] = violations
             if violations:
                 self.failure(ValueError(f'Unmasked OC scan: {violations} matches'), 'security')
-            # Keep the fixed report schema; security scan result is also emitted as a masked log.
             LOG.info('Security scan unmasked OC count: %s', violations)
             out = self.root / 'reports' / f'collect_{self.now:%Y%m%d_%H%M}.json'
             atomic_json(out, self.report)
@@ -233,12 +290,15 @@ def main():
     parser.add_argument('--stage', choices=('list', 'detail', 'all'), default='all')
     parser.add_argument('--limit', type=int)
     parser.add_argument('--refresh-recent-years', type=int, default=1)
+    parser.add_argument('--recheck-unavailable', action='store_true')
+    parser.add_argument('--full-security-scan', action='store_true')
     args = parser.parse_args()
     install_log_masking()
     settings = get_settings()
     try:
         report = Collector(LawGoKrClient(oc=settings.law_api_key), settings.raw_cache_dir).run(
-            args.from_year, args.to_year, args.stage, args.limit, args.refresh_recent_years)
+            args.from_year, args.to_year, args.stage, args.limit, args.refresh_recent_years,
+            recheck_unavailable=args.recheck_unavailable, full_security_scan=args.full_security_scan)
     except (ValueError, OSError) as exc:
         LOG.error('%s', MaskedRequestError(exc))
         return 1
