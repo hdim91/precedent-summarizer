@@ -1,0 +1,13 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# data (용량·재생성 가능)
+data/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
