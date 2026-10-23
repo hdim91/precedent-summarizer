@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# 비밀정보 커밋 차단 hook. 설정: git config core.hooksPath scripts/hooks
+# 출력에는 파일명·변수명·패턴명만 표시하고, 값은 절대 출력하지 않는다.
+set -u
+fail=0
+
+# (a) .env 계열 파일 스테이징 차단 (.env.example 제외)
+while IFS= read -r f; do
+  base="${f##*/}"
+  if [[ "$base" == ".env" || ( "$base" == .env.* && "$base" != ".env.example" ) ]]; then
+    echo "[pre-commit] 차단: 비밀 파일 스테이징 -> $f"; fail=1
+  fi
+done < <(git diff --cached --name-only --diff-filter=ACMR)
+
+added="$(git diff --cached -U0 --diff-filter=ACMR | grep -E '^\+' | grep -vE '^\+\+\+ ' || true)"
+
+# (b) 실제 .env 비밀값(변수명에 KEY/SECRET/TOKEN/PASSWORD/CREDENTIAL 포함)과 일치하는 문자열 차단 (값은 메모리 내 비교만, 출력 금지)
+root="$(git rev-parse --show-toplevel)"
+if [[ -f "$root/.env" && -n "$added" ]]; then
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    [[ -z "$line" || "$line" == \#* || "$line" != *=* ]] && continue
+    name="${line%%=*}"; val="${line#*=}"
+    # 비밀 성격의 변수만 비교(모델명 등 일반 설정값은 문서에 정상 등장하므로 제외)
+    [[ "${name^^}" =~ (KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL) ]] || continue
+    val="${val%\"}"; val="${val#\"}"; val="${val%\'}"; val="${val#\'}"
+    (( ${#val} < 8 )) && continue
+    if grep -qF -- "$val" <<<"$added"; then
+      echo "[pre-commit] 차단: .env의 ${name} 값이 스테이징된 변경에 포함됨"; fail=1
+    fi
+  done < "$root/.env"
+fi
+
+# (c) 키 형식 패턴 차단
+declare -A pats=(
+  ["Anthropic 키(sk-ant-)"]='sk-ant-[A-Za-z0-9_-]{16,}'
+  ["OpenAI 키(sk-)"]='sk-(proj-)?[A-Za-z0-9]{20,}'
+  ["law.go.kr OC 파라미터 값"]='[?&]OC=[A-Za-z0-9_-][A-Za-z0-9._-]{2,}'
+  ["일반 key/secret/token 대입"]='(api[_-]?key|secret|token|password)["'"'"' ]*[:=][ "'"'"']*[A-Za-z0-9_./+-]{16,}'
+)
+for k in "${!pats[@]}"; do
+  if grep -qiE -- "${pats[$k]}" <<<"$added"; then
+    echo "[pre-commit] 차단: ${k} 패턴 감지"; fail=1
+  fi
+done
+
+if (( fail )); then
+  echo "[pre-commit] 커밋 중단. 해당 내용을 제거하고 다시 커밋하세요. (--no-verify 우회 금지: docs/RULES.md 1-1)"
+  exit 1
+fi
+exit 0
