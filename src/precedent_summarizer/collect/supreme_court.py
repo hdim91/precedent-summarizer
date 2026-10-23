@@ -126,13 +126,16 @@ class Collector:
         if latest and latest.name != 'snap_' + self.day and not self.complete(latest):
             self.failure(ValueError(f'Incomplete previous snapshot for {year}'), 'snapshot')
             return parent / ('snap_' + self.day)
-        if year >= to_year - recent + 1 or latest is None:
+        if (year != 'undated' and year >= to_year - recent + 1) or latest is None:
             return parent / ('snap_' + self.day)
         return latest
 
-    def lists(self, from_year, to_year, recent):
+    def lists(self, from_year, to_year, recent, *, no_undated=False):
         manifest = {}
-        for year in range(from_year, to_year + 1):
+        slices = list(range(from_year, to_year + 1))
+        if not no_undated:
+            slices.append('undated')
+        for year in slices:
             if self.stopped:
                 break
             snap = self.choose_snapshot(year, to_year, recent)
@@ -140,9 +143,11 @@ class Collector:
                         total_cnt=0, pages=0, items=0)
             self.report['year_slices'].append(info)
             try:
+                date_from, date_to = ('00010101', '18991231') if year == 'undated' else (
+                    f'{year:04d}0101', f'{year:04d}1231')
                 def page_request(page):
-                    return self.client.search_precedents(org=ORG_SUPREME_COURT, date_from=f'{year}0101',
-                                                         date_to=f'{year}1231', display=100, page=page)
+                    return self.client.search_precedents(org=ORG_SUPREME_COURT, date_from=date_from,
+                                                         date_to=date_to, display=100, page=page)
                 first = self.fetch(snap / 'p0001.json', 'PrecSearch', lambda: page_request(1))
                 info['total_cnt'] = int(first['totalCnt'])
                 info['pages'] = math.ceil(info['total_cnt'] / 100)
@@ -159,7 +164,9 @@ class Collector:
                         for row in rows:
                             ident = str(row['판례일련번호'])
                             manifest.setdefault(ident, dict(prec_id=ident, case_no=row.get('사건번호', ''),
-                                decision_date=row.get('선고일자', ''), data_source=row.get('데이터출처명', ''), year=year, list_file=path.relative_to(self.root).as_posix()))
+                                decision_date=row.get('선고일자', ''), data_source=row.get('데이터출처명', ''),
+                                year=None if year == 'undated' else year,
+                                date_status='placeholder' if year == 'undated' else 'ok', list_file=path.relative_to(self.root).as_posix()))
                     except (MaskedRequestError, ValueError, OSError) as exc:
                         self.failure(exc, 'list')
                 info['snapshot_complete'] = self.complete(snap)
@@ -171,7 +178,7 @@ class Collector:
         return list(manifest.values())
 
     def run(self, from_year=1947, to_year=None, stage='all', limit=None, recent=1,
-            *, recheck_unavailable=False, full_security_scan=False):
+            *, recheck_unavailable=False, full_security_scan=False, no_undated=False):
         # Each invocation owns its counters, including repeated use by callers.
         self.__init__(self.client, self.root, now=self.now)
         to_year = to_year or self.now.year
@@ -189,9 +196,11 @@ class Collector:
                 self.failure(exc, 'total')
             if stage == 'detail':
                 records = [json.loads(line) for line in manifest_path.read_text(encoding='utf-8').splitlines() if line]
-                records = list({str(r['prec_id']): r for r in records if from_year <= int(r['year']) <= to_year}.values())
+                records = list({str(r['prec_id']): r for r in records
+                                if (not no_undated if r['year'] is None
+                                    else from_year <= int(r['year']) <= to_year)}.values())
             else:
-                records = self.lists(from_year, to_year, recent)
+                records = self.lists(from_year, to_year, recent, no_undated=no_undated)
                 manifest_path.parent.mkdir(parents=True, exist_ok=True)
                 tmp = manifest_path.with_suffix('.jsonl.tmp')
                 tmp.write_text(''.join(json.dumps(r, ensure_ascii=False) + '\n' for r in records), encoding='utf-8', newline='\n')
@@ -292,13 +301,15 @@ def main():
     parser.add_argument('--refresh-recent-years', type=int, default=1)
     parser.add_argument('--recheck-unavailable', action='store_true')
     parser.add_argument('--full-security-scan', action='store_true')
+    parser.add_argument('--no-undated', action='store_true')
     args = parser.parse_args()
     install_log_masking()
     settings = get_settings()
     try:
         report = Collector(LawGoKrClient(oc=settings.law_api_key), settings.raw_cache_dir).run(
             args.from_year, args.to_year, args.stage, args.limit, args.refresh_recent_years,
-            recheck_unavailable=args.recheck_unavailable, full_security_scan=args.full_security_scan)
+            recheck_unavailable=args.recheck_unavailable, full_security_scan=args.full_security_scan,
+            no_undated=args.no_undated)
     except (ValueError, OSError) as exc:
         LOG.error('%s', MaskedRequestError(exc))
         return 1

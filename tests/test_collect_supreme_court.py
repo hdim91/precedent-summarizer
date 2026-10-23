@@ -25,6 +25,9 @@ class FakeSession:
             return response
         else:
             display, page = params['display'], params['page']
+            if params.get('prncYd') == '00010101~18991231':
+                response._content = json.dumps({'PrecSearch': {'totalCnt': '0', 'prec': []}}).encode()
+                return response
             rows = [{'판례일련번호': str(i+1), '사건번호': '', '선고일자': '20250101'}
                     for i in range((page-1)*display, min(page*display, self.total))]
             body = {'PrecSearch': {'totalCnt': str(self.total), 'prec': rows}}
@@ -233,3 +236,85 @@ def test_security_scan_scope(tmp_path, monkeypatch):
     assert report['security_scan_unmasked_oc'] == 0
     assert {p.parent.name for p in inspected} >= {'manifest', 'prec_detail_unavailable', 'reports'}
     assert any(p.name == 'p0001.json' for p in inspected)
+
+
+class UndatedSession(FakeSession):
+    def get(self, url, params, timeout):
+        response = super().get(url, params, timeout)
+        if 'ID' in params:
+            return response
+        if params.get('prncYd') == '00010101~18991231':
+            display, page = params['display'], params['page']
+            rows = [{'판례일련번호': str(i + 1000), '선고일자': '0001.01.01',
+                     '사건번호': '', '데이터출처명': '근로복지공단산재판례'}
+                    for i in range((page - 1)*display, min(page*display, 101))]
+            body = {'PrecSearch': {'totalCnt': '101', 'prec': rows}}
+        elif 'prncYd' not in params:
+            body = json.loads(response.content)
+            body['PrecSearch']['totalCnt'] = str(self.total + 101)
+        else:
+            return response
+        response._content = json.dumps(body, ensure_ascii=False).encode()
+        return response
+
+
+def test_undated_pagination_manifest_and_total(tmp_path):
+    session = UndatedSession(total=2)
+    c = collector(tmp_path, session)
+    report = c.run(2025, 2025)
+    assert report['sum_year_items'] == report['api_total_cnt'] == report['manifest_count'] == 103
+    assert report['detail_cached'] == 103
+    info = report['year_slices'][-1]
+    assert info['year'] == 'undated' and info['pages'] == 2 and info['snapshot_complete']
+    snapshot = c.root/'prec_list'/'org400201'/'undated'/('snap_' + c.day)
+    assert (snapshot/'p0001.json').exists() and (snapshot/'p0002.json').exists()
+    records = [json.loads(line) for line in (c.root/'manifest'/'prec_ids_org400201.jsonl').read_text(encoding='utf-8').splitlines()]
+    dated = [r for r in records if r['year'] is not None]
+    undated = [r for r in records if r['year'] is None]
+    assert len(dated) == 2 and all(r['date_status'] == 'ok' for r in dated)
+    assert len(undated) == 101
+    assert all(r['date_status'] == 'placeholder' and r['decision_date'] == '0001.01.01'
+               and r['case_no'] == '' and '/undated/' in r['list_file'] for r in undated)
+    original = (snapshot/'p0001.json').read_bytes()
+    session.calls.clear()
+    again = collector(tmp_path, session, c.now + timedelta(days=1)).run(2025, 2025, stage='list', recent=100)
+    assert again['year_slices'][-1]['snapshot'] == info['snapshot']
+    assert not any(call.get('prncYd') == '00010101~18991231' for call in session.calls)
+    assert (snapshot/'p0001.json').read_bytes() == original
+
+
+def test_no_undated_excludes_listing(tmp_path):
+    session = UndatedSession(total=2)
+    c = collector(tmp_path, session)
+    report = c.run(2025, 2025, stage='list', no_undated=True)
+    assert report['sum_year_items'] == report['manifest_count'] == 2
+    assert [s['year'] for s in report['year_slices']] == [2025]
+    assert not any(call.get('prncYd') == '00010101~18991231' for call in session.calls)
+    assert not (c.root/'prec_list'/'org400201'/'undated').exists()
+
+
+@pytest.mark.parametrize('year,no_undated,expected', [(2020, False, 101), (2020, True, 0), (2025, True, 2), (2025, False, 103)])
+def test_detail_stage_filters_null_year(tmp_path, year, no_undated, expected):
+    session = UndatedSession(total=2)
+    c = collector(tmp_path, session)
+    c.run(2025, 2025, stage='list')
+    session.calls.clear()
+    report = c.run(year, year, stage='detail', no_undated=no_undated)
+    assert report['manifest_count'] == report['detail_cached'] == expected
+    assert not report['failures']
+    assert len([call for call in session.calls if 'ID' in call]) == expected
+
+
+def test_undated_incomplete_previous_snapshot(tmp_path):
+    session = UndatedSession(total=1)
+    c = collector(tmp_path, session)
+    c.run(2025, 2025, stage='list')
+    old = c.root/'prec_list'/'org400201'/'undated'/('snap_' + c.day)
+    (old/'p0002.json').unlink()
+    original = (old/'p0001.json').read_bytes()
+    next_run = collector(tmp_path, session, c.now + timedelta(days=1))
+    report = next_run.run(2025, 2025, stage='list', recent=0)
+    assert report['year_slices'][-1]['snapshot_complete']
+    assert report['year_slices'][-1]['snapshot'].endswith('snap_' + next_run.day)
+    assert any(f['stage'] == 'snapshot' for f in report['failures'])
+    assert (old/'p0001.json').read_bytes() == original
