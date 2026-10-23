@@ -128,10 +128,11 @@ class LawGoKrClient:
         return self._get(SERVICE_URL, p)
 
 
-def save_raw_response(resp: requests.Response, out_path: Path, *, overwrite: bool = False) -> Path:
-    """응답 본문만 마스킹해 저장. 기본은 불변(이미 있으면 덮어쓰지 않음, RULES 5장)."""
+def save_raw_response(resp: requests.Response, out_path: Path) -> Path:
+    """응답 본문만 마스킹해 저장. 불변: 이미 있으면 덮어쓰지 않고 기존 경로를 반환(RULES 5장).
+    갱신이 필요한 데이터(최근 연도 목록 등)는 덮어쓰지 말고 새 스냅샷 경로에 저장한다."""
     out_path = Path(out_path)
-    if out_path.exists() and not overwrite:
+    if out_path.exists():
         return out_path
     out_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = out_path.with_suffix(out_path.suffix + ".tmp")

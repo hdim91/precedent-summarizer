@@ -1,9 +1,9 @@
 # STATE — 현재 상태 (세션마다 덮어써서 최신화, 80줄 이하)
 
-마지막 갱신: 2026-10-23 18:57 KST · 갱신자: Claude
+마지막 갱신: 2026-10-23 19:05 KST · 갱신자: Claude
 
 ## 현재 단계
-**P0 환경 구축 — 완료** → **P1 수집: TASK-001 Codex 배정 대기**
+**P0 환경 구축 — 완료** → **P1 수집: TASK-001 v2 재배정 대기**
 
 ## 완료 (P0)
 - 저장소 `C:\Users\hdim9\code\precedent-summarizer` ↔ GitHub private
@@ -14,10 +14,11 @@
 - OneDrive 원본 코드 키 노출 수정 및 기존 캐시 마스킹(D-011)
 
 ## 차단 요인
-- 없음. Anthropic 키(워크스페이스 범위) 검증 완료: `claude-sonnet-5-5`·`claude-opus-5-5` 조회 및 Messages 호출 정상(18:56)
+- 없음. (해소: TASK-001 v1 규칙 충돌 → v2 스냅샷 방식 D-013 / Codex `.git` 쓰기 거부 → Claude 대리 커밋 D-014)
+- Anthropic 키 검증 완료(18:56): `claude-sonnet-5-5`·`claude-opus-5-5` 조회, Messages 호출 정상
 
 ## 다음 작업
-1. TASK-001 Codex 배정(사용자가 Codex에 `docs/tasks/TASK-001.md` 전달) → 시범(2025년, 50건) 보고 → 전량
+1. TASK-001 v2 Codex 재배정 → 시범(2025년, 50건) 보고 → Claude 리뷰·커밋 → 전량
 2. Claude: TASK-002(P2 정제·적재) 명세 작성 — TASK-001 시범 결과로 필드 공백률 확인 후
 3. Claude: P3 요약 출력 스키마·프롬프트 초안
 

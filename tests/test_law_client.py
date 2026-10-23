@@ -65,6 +65,11 @@ def test_save_raw_masks_and_is_immutable(tmp_path):
     assert out.read_bytes() != b"NEW"
 
 
+def test_save_raw_has_no_overwrite_option(tmp_path):
+    import inspect
+    assert "overwrite" not in inspect.signature(save_raw_response).parameters
+
+
 def test_date_range_requires_both():
     with pytest.raises(ValueError):
         client(FakeResp()).search_precedents(date_from="20250101")

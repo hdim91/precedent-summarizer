@@ -24,7 +24,9 @@
 4. 완료 조건의 검증(테스트·건수 리포트)을 실행하고 결과를 명세 파일 "완료 보고" 란에 적는다.
 5. `docs/worklog/YYYY-MM-DD.md`에 시각(KST)과 함께 한 일을 추가하고, `docs/STATE.md`의 해당 항목을 갱신한다.
 6. 커밋·푸시 후 PR을 연다. 병합은 Claude 리뷰 후.
+   - **`.git` 쓰기가 막힌 실행 환경이면** 우회 시도(권한 변경, 다른 경로에 저장소 복제 등) 없이 변경을 작업 트리에 둔 채 명세 "완료 보고"에 변경 파일 목록을 적고 끝낸다. Claude가 리뷰 후 `codex/TASK-xxx-...` 브랜치로 커밋한다.
 
 ## 4. 환경
 - Python 3.10+, 패키지 루트 `src/precedent_summarizer/`, 테스트 `tests/`(pytest)
-- 최초 클론 후 1회: `git config core.hooksPath scripts/hooks`
+- `core.hooksPath`는 이 PC의 클론(`C:\Users\hdim9\code\precedent-summarizer`)에 이미 설정돼 있다. 새로 클론한 경우에만 1회: `git config core.hooksPath scripts/hooks`
+- 파일은 UTF-8·LF로 저장한다.
