@@ -1,9 +1,9 @@
 # STATE — 현재 상태 (세션마다 덮어써서 최신화, 80줄 이하)
 
-마지막 갱신: 2026-10-23 19:58 KST · 갱신자: Claude
+마지막 갱신: 2026-10-23 20:05 KST · 갱신자: Claude
 
 ## 현재 단계
-**P1 수집 — TASK-001 v2 병합(69dc94b), v3(상세 미제공 출처 처리) 구현·단위 검증 완료, Claude 리뷰 대기**
+**P1 수집 — 목록 전 연도 완료(72,041), 상세 전량 수집 대기(사용자 Windows 실행), TASK-001 v4(선고일자 없는 3,426건) Codex 배정 대기**
 
 ## 완료
 - P0 전체(저장소·규칙·보안 hook·패키지 골격·클라이언트·키 검증) — 상세는 worklog
@@ -16,10 +16,9 @@
 - Codex 환경 전체 pytest는 anthropic 미설치로 차단, 관련 테스트 27건 통과.
 
 ## 다음 작업
-1. Claude: TASK-001 v3 리뷰·대리 커밋(`codex/TASK-001-v3-unavailable`), 전체 pytest
-2. Claude: v3 리뷰 → 시범 재실행 → 전량 수집 실행(D-015)
-3. Claude: TASK-002(P2 정제·적재) 명세
-4. Claude: P3 요약 출력 스키마·프롬프트 초안
+1. 사용자: Windows에서 상세 전량 수집 실행(재개 가능, 수 시간) — 명령은 아래 '실행 방법'
+2. Codex: TASK-001 v4 → Claude 리뷰 → undated 3,426건 추가 수집
+3. Claude: TASK-002(P2 정제·적재) 명세, P3 요약 스키마·프롬프트 초안
 
 ## 미결정 (사용자)
 - 국세 출처 본문: 현재 (a) 메타만 보관으로 진행(D-017). 대체 경로로 공공데이터 제공신청 여부 결정 필요 — `docs/notes/source_tax_precedents.md`
@@ -39,4 +38,7 @@ pip install -e ".[dev]"
 python scripts\check_env.py
 pytest            # live 제외
 pytest -m live    # 실제 API (키 필요)
+mkdir data\logs
+python -m precedent_summarizer.collect.supreme_court --from-year 1947 2> data\logs\collect.log
 ```
+- 중단돼도 같은 명령 재실행 시 이어서 수집(받은 파일은 건너뜀). 결과는 `data\raw_cache\reports\collect_*.json`
