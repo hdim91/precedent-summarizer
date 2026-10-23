@@ -2,7 +2,7 @@
 
 - 작성: Claude · 작성일시: 2026-10-23 18:48 KST
 - 담당: Codex · 브랜치: `codex/TASK-001-supreme-court-collector`
-- 상태: v2 병합 완료(69dc94b) → **v3 추가 요구 대기** (2026-10-23 19:25 KST)
+- 상태: v2 병합 완료(69dc94b) → **v3 구현·단위 검증 완료, Claude 리뷰 대기** (2026-10-23 19:25 KST)
 
 ## 목표
 law.go.kr Open API에서 **대법원 판례 전량(2026-10-23 실측 totalCnt=75,467)** 의 목록과 상세를 raw 캐시로 수집한다.
@@ -109,7 +109,16 @@ law.go.kr Open API에서 **대법원 판례 전량(2026-10-23 실측 totalCnt=75
 -
 
 ## 완료 보고 (v3, Codex 작성)
-- 완료 일시(KST):
-- 변경 파일:
-- 검증 결과:
-- 남은 문제:
+- 완료 일시(KST): 2026-10-23 19:52 KST
+- 변경 파일: `src/precedent_summarizer/collect/supreme_court.py`, `tests/test_collect_supreme_court.py`, `docs/tasks/TASK-001.md`, `docs/STATE.md`, `docs/worklog/2026-10-23.md`.
+- 구현: 미제공 응답을 별도 분류, 마스킹된 불변 마커 원자 저장, 마커 재사용 및 `--recheck-unavailable`, 정상 상세 캐시 우선 적용, 매니페스트 출처 및 출처별 집계, 캐시 적중 실패 카운터 초기화, `security_scan_unmasked_oc`, 새 파일+reports 기본 검사 및 `--full-security-scan` 추가.
+- 검증 결과: `src`에서 `python -m pytest ../tests/test_collect_supreme_court.py ../tests/test_law_client.py ../tests/test_config.py ../tests/test_security.py -q` → 27 passed. FakeSession으로 미제공 25건 연속 처리·마커 불변/재개/재확인·출처별 집계·정상 캐시의 연속 오류 분리·기본/전체 스캔 범위 검증. CLI help에 두 플래그 확인. `git diff --check` 통과. 실제 키·네트워크 미사용.
+- 전체 pytest: 기존 anthropic 의존성 누락으로 수집 단계 오류(2 live 제외). 설치 우회·가상환경 재시도·실제 API 호출 없음.
+- 커밋: `.git` 제한/D-014에 따라 대리 커밋 대상 브랜치는 `codex/TASK-001-v3-unavailable`. 작업 중 외부 커밋 `b4dd099` 반영 확인, 수집기 변경은 현재 HEAD와 일치. 추가 테스트와 완료 문서는 작업 트리에 유지.
+- 남은 문제: Claude 환경에서 전체 pytest 및 실제 시범 재실행 후 전량 수집 필요(D-015). limit 미사용·중단 없는 FakeSession 실행에서 변경된 건수 등식 검증 완료; 실제 전량 건수는 미검증.
+
+## Claude 리뷰 (v3, 2026-10-23 19:56~19:58 KST)
+- 판정: **승인**. 요구 1~6 반영 확인, 전체 pytest 28건 통과(Claude 환경).
+- 커밋 경위: v3의 `supreme_court.py` 변경은 Claude의 문서 커밋 `b4dd099`(19:52)에 `git add -A`로 함께 들어갔다(Codex 작업 중 파일 혼입). 내용은 최종본과 동일함을 확인. 테스트·문서는 이번 커밋. 재발 방지: CLAUDE.md 3-1.
+- 시범 재실행(2025년, limit 50): 목록 1,150 / 상세 캐시 49(신규 18) / 미제공 32(전부 국세법령정보시스템) / 실패 0 / 보안 스캔 0.
+  - 출처별: 대법원 46/697 수집, 지방세 3/70 수집(미제공 0), 국세 0/383(미제공 32)
