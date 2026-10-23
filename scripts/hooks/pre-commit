@@ -36,7 +36,7 @@ declare -A pats=(
   ["Anthropic 키(sk-ant-)"]='sk-ant-[A-Za-z0-9_-]{16,}'
   ["OpenAI 키(sk-)"]='sk-(proj-)?[A-Za-z0-9]{20,}'
   ["law.go.kr OC 파라미터 값"]='[?&]OC=[A-Za-z0-9_-][A-Za-z0-9._-]{2,}'
-  ["일반 key/secret/token 대입"]='(api[_-]?key|secret|token|password)["'"'"' ]*[:=][ "'"'"']*[A-Za-z0-9_./+-]{16,}'
+  ["일반 key/secret/token 문자열 리터럴 대입"]='(api[_-]?key|secret|token|password)["'"'"']?[ ]*[:=][ ]*["'"'"'][A-Za-z0-9_./+-]{16,}["'"'"']'
 )
 for k in "${!pats[@]}"; do
   if grep -qiE -- "${pats[$k]}" <<<"$added"; then

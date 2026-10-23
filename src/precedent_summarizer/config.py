@@ -51,6 +51,7 @@ def _opt_float(name: str) -> Optional[float]:
 class Settings:
     anthropic_api_key: str = field(repr=False)
     law_api_key: str = field(repr=False)
+    anthropic_workspace_id: Optional[str] = None  # 조직 범위 키일 때만 필요(wrkspc_...)
     model_default: str = "claude-sonnet-5-5"
     model_complex: str = "claude-opus-5-5"
     batch_budget_usd: Optional[float] = None
@@ -71,6 +72,7 @@ def get_settings() -> Settings:
     return Settings(
         anthropic_api_key=require_secret("ANTHROPIC_API_KEY"),
         law_api_key=require_secret("LAW_API_KEY"),
+        anthropic_workspace_id=os.environ.get("ANTHROPIC_WORKSPACE_ID") or None,
         model_default=os.environ.get("CLAUDE_MODEL_DEFAULT") or Settings.model_default,
         model_complex=os.environ.get("CLAUDE_MODEL_COMPLEX") or Settings.model_complex,
         batch_budget_usd=_opt_float("BATCH_BUDGET_USD"),

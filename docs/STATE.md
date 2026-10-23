@@ -1,19 +1,20 @@
 # STATE — 현재 상태 (세션마다 덮어써서 최신화, 80줄 이하)
 
-마지막 갱신: 2026-10-23 18:48 KST · 갱신자: Claude
+마지막 갱신: 2026-10-23 18:57 KST · 갱신자: Claude
 
 ## 현재 단계
-**P0 환경 구축 — 완료(Anthropic 키 확인 대기)** → **P1 수집: TASK-001 Codex 배정 대기**
+**P0 환경 구축 — 완료** → **P1 수집: TASK-001 Codex 배정 대기**
 
 ## 완료 (P0)
 - 저장소 `C:\Users\hdim9\code\precedent-summarizer` ↔ GitHub private
 - 규칙·연속성 문서, AGENTS.md/CLAUDE.md, pre-commit 비밀유출 차단 hook
 - 패키지 골격: `config`, `common/security`(마스킹), `clients/law_go_kr`(HTTPS·예외 마스킹·raw 불변 저장), `schemas/precedent.py`, `schemas/db.sql`
-- `scripts/check_env.py`(존재 여부만), 테스트 13건 + live 1건 통과
+- `clients/anthropic_client.py`(단일 진입점, 조직 범위 키용 워크스페이스 헤더 선택 지원)
+- `scripts/check_env.py`(존재 여부만), 테스트 14건 + live 2건 통과
 - OneDrive 원본 코드 키 노출 수정 및 기존 캐시 마스킹(D-011)
 
 ## 차단 요인
-- `ANTHROPIC_API_KEY`: API 인증 401. 값 형식이 `sk-ant-`로 시작하지 않음 → 사용자가 재확인·재입력 필요 (P3 전까지 필요, P1·P2는 진행 가능)
+- 없음. Anthropic 키(워크스페이스 범위) 검증 완료: `claude-sonnet-5-5`·`claude-opus-5-5` 조회 및 Messages 호출 정상(18:56)
 
 ## 다음 작업
 1. TASK-001 Codex 배정(사용자가 Codex에 `docs/tasks/TASK-001.md` 전달) → 시범(2025년, 50건) 보고 → 전량

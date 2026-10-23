@@ -13,3 +13,13 @@ def test_live_supreme_court_search_and_masking():
     j = r.json()["PrecSearch"]
     assert int(j["totalCnt"]) > 70000
     assert key.encode() not in mask_bytes(r.content)
+
+
+@pytest.mark.live
+def test_live_anthropic_models_available():
+    from precedent_summarizer.clients.anthropic_client import make_client
+    from precedent_summarizer.config import get_settings
+    s = get_settings()
+    c = make_client(s)
+    for m in (s.model_default, s.model_complex):
+        assert c.models.retrieve(m).id == m
