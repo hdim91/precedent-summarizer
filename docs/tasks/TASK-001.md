@@ -141,7 +141,10 @@ law.go.kr Open API에서 **대법원 판례 전량(2026-10-23 실측 totalCnt=75
 -
 
 ## 완료 보고 (v4, Codex 작성)
-- 완료 일시(KST):
-- 변경 파일:
-- 검증 결과:
-- 남은 문제:
+- 완료 일시(KST): 2026-10-23 21:24 KST
+- 변경 파일: `src/precedent_summarizer/collect/supreme_court.py`, `tests/test_collect_supreme_court.py`, `docs/tasks/TASK-001.md`, `docs/STATE.md`, `docs/worklog/2026-10-23.md`.
+- 구현: 기본 실행에 undated(00010101~18991231) 구간 추가, 불변 스냅샷 경로 및 과거 연도와 동일한 재개/선택 처리. 최근 연도 갱신 대상에서 제외. `--no-undated`로 목록/상세 양쪽에서 제외. 매니페스트에 `year: null`, `date_status: placeholder`(일반 연도 ok), 보고서 undated 항목 및 합계 집계. 상세 단계는 null 연도를 범위와 무관하게 포함.
+- 검증 결과: `src`에서 `python -m pytest ../tests/test_collect_supreme_court.py ../tests/test_law_client.py ../tests/test_config.py ../tests/test_security.py -q` → 34 passed. FakeSession으로 undated 101건 페이징·경로/필드·연도 2건+undated 101건=총계 103건, refresh와 무관한 다음날 스냅샷 재사용, 미완결 스냅샷 복구, no-undated 목록 제외, 상세 연도 필터 4가지 조합 검증. CLI `--help`에 `--no-undated` 확인, `git diff --check` 통과. 실제 키·네트워크 미사용.
+- 전체 pytest: 기존 anthropic 의존성 누락으로 수집 단계 오류(2 live 제외). 실제 API는 실행하지 않음(D-015).
+- 커밋: `.git` 쓰기 제한/D-014에 따라 변경은 작업 트리에 유지. Claude 대리 커밋 대상: `codex/TASK-001-v4-undated`.
+- 남은 문제: Claude/사용자 환경에서 전체 pytest 및 실제 undated 3,426건 추가 수집·총계 75,467건 대조 필요. 실제 전량 수집은 미실행.
