@@ -1,11 +1,12 @@
 """요약 엔진 소규모 시범(DB 적재 전, raw 상세 직접 사용).
 
-사용: python scripts/pilot_summarize.py --ids 123,456 | --sample N [--model M]
-출력: data/pilot/{prec_id}.json (요약·검증·토큰). 정제·구획은 TASK-002의 load.normalize가 생기면 그것으로 교체한다.
+사용: python scripts/pilot_summarize.py (--ids 123,456 | --ids-file F | --sample N) [--model M] [--out NAME] [--workers K]
+출력: data/pilot/{NAME}/{prec_id}.json (요약·검증·토큰). 이미 있는 결과는 건너뜀(재개 가능). 정제·구획은 TASK-002의 load.normalize가 생기면 그것으로 교체한다.
 """
 from __future__ import annotations
 
 import argparse, json, random, re, time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from precedent_summarizer.clients.anthropic_client import make_client
@@ -38,16 +39,21 @@ def load_case(raw_dir: Path, pid: str):
 def main():
     ap = argparse.ArgumentParser()
     g = ap.add_mutually_exclusive_group(required=True)
-    g.add_argument("--ids"); g.add_argument("--sample", type=int)
+    g.add_argument("--ids"); g.add_argument("--ids-file"); g.add_argument("--sample", type=int)
     ap.add_argument("--model"); ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--out", default="default"); ap.add_argument("--workers", type=int, default=1)
     a = ap.parse_args()
     install_log_masking()
     s = get_settings(); client = make_client(s); model = a.model or s.model_default
     raw = s.raw_cache_dir
+    if a.ids_file:
+        a.ids = Path(a.ids_file).read_text(encoding="utf-8").strip()
     ids = a.ids.split(",") if a.ids else random.Random(a.seed).sample(
         sorted(p.stem for p in (raw / "prec_detail").glob("*.json")), a.sample)
-    out = s.raw_cache_dir.parent / "pilot"; out.mkdir(parents=True, exist_ok=True)
-    for pid in ids:
+    out = s.raw_cache_dir.parent / "pilot" / a.out; out.mkdir(parents=True, exist_ok=True)
+    todo = [pid for pid in ids if not (out / f"{pid}.json").exists()]
+
+    def one(pid):
         d, c, secs = load_case(raw, pid)
         t0 = time.time()
         try:
@@ -62,7 +68,11 @@ def main():
         except Exception as e:  # noqa: BLE001
             rec = {"prec_id": pid, "error": mask_secrets(f"{type(e).__name__}: {e}")}
             print(pid, "ERROR", rec["error"][:200])
-        (out / f"{pid}.json").write_text(json.dumps(rec, ensure_ascii=False, indent=2), encoding="utf-8")
+        if "error" not in rec:  # 오류 건은 저장하지 않아 다음 실행에서 재시도
+            (out / f"{pid}.json").write_text(json.dumps(rec, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    with ThreadPoolExecutor(max_workers=max(1, a.workers)) as ex:
+        list(ex.map(one, todo))
 
 
 if __name__ == "__main__":

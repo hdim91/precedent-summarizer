@@ -41,10 +41,10 @@ def iter_evidence(summary: dict) -> list[tuple[str, str]]:
 
 # 결론 유형별 주문 핵심 표현(하나라도 있으면 일치). 정규화(공백 제거) 문자열 기준.
 _DISPOSITION_PATTERNS: dict[str, list[str]] = {
-    "상고기각": ["상고를기각", "상고를모두기각", "상고는기각", "각상고를기각"],
+    "상고기각": ["상고를기각", "상고를모두기각", "상고는기각", "각상고를기각", "상고를각기각"],
     "상고각하": ["상고를각하", "상고를모두각하", "상고는각하"],
-    "재항고기각": ["재항고를기각"],
-    "항고기각": ["항고를기각"],
+    "재항고기각": ["재항고를기각", "재항고를모두기각", "재항고는기각", "재항고를각기각"],
+    "항고기각": ["항고를기각", "항고를모두기각", "항고는기각"],
     "파기환송": ["파기", "환송"],
     "일부파기환송": ["파기", "환송"],
     "파기이송": ["파기", "이송"],
@@ -68,8 +68,8 @@ def check_disposition(dtype: str, order_text: Optional[str]) -> str:
         return "unknown_type"
     t = re.sub(r"\s+", "", order_text)
     ok = all(p in t for p in pats) if dtype in _ALL_OF else any(p in t for p in pats)
-    if dtype == "상고기각" and "파기" in t:
-        ok = False  # 일부 파기가 섞이면 단순 상고기각 아님
+    if dtype == "상고기각" and ("파기" in t or "재항고" in t):
+        ok = False  # 일부 파기가 섞이거나 재항고 사건이면 단순 상고기각 아님
     return "match" if ok else "mismatch"
 
 

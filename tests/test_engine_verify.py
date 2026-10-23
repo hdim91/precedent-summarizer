@@ -46,6 +46,8 @@ def test_no_order_section_is_not_failure():
 def test_disposition_patterns():
     assert check_disposition("파기환송", "원심판결을 파기하고, 사건을 서울고등법원에 환송한다.") == "match"
     assert check_disposition("상고기각", "원심판결 중 일부를 파기하고 나머지 상고를 기각한다.") == "mismatch"
+    assert check_disposition("재항고기각", "재항고를 모두 기각한다. 재항고비용은 신청인들이 부담한다.") == "match"
+    assert check_disposition("상고기각", "재항고를 기각한다.") == "mismatch"
 
 
 def test_statute_keys_carry_law_name():
