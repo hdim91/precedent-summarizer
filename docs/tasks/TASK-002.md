@@ -2,7 +2,7 @@
 
 - 작성: Claude · 작성일시: 2026-10-23 21:32 KST
 - 담당: Codex · 브랜치: `codex/TASK-002-load`
-- 상태: 대기
+- 상태: 구현·단위/통합 검증 완료, Claude 리뷰·실제 적재 대기
 
 ## 목표
 수집된 raw 캐시(매니페스트·목록 스냅샷·상세·미제공 마커)를 `schemas/db.sql`(v2) 스키마의 SQLite로 적재한다. 재실행 시 변경분만 반영(멱등).
@@ -43,13 +43,13 @@
 - `docs/RULES.md`, `docs/INTENT.md`, `docs/DECISIONS.md`, `src/precedent_summarizer/schemas/`, `src/precedent_summarizer/engine/`, `prompts/`, `src/precedent_summarizer/common/security.py`, `src/precedent_summarizer/clients/`, `scripts/hooks/`, `data/raw_cache/**`(읽기 전용)
 
 ## 보안 체크 (RULES.md 1장)
-- [ ] `.env` 미열람, 키 값 미출력
-- [ ] 로그는 마스킹 경유
-- [ ] 테스트는 tmp 디렉터리의 가짜 raw 파일 사용(실제 `data/` 미사용, 네트워크 미사용)
+- [x] `.env` 미열람, 키 값 미출력
+- [x] 로그는 마스킹 경유
+- [x] 테스트는 tmp 디렉터리의 가짜 raw 파일 사용(실제 `data/` 미사용, 네트워크 미사용)
 
 ## 완료 조건
-- [ ] `normalize.py` 단위 테스트: `<br/>` 변형, 다중 빈 줄, 날짜 3형식·자리표시·빈 값, 구획 분할 오프셋(헤더 사이 텍스트가 정확히 잘리는지), `"null"` 문자열 처리
-- [ ] `loader` 통합 테스트(tmp): ok/unavailable/missing 3종 행 생성, 재실행 시 `unchanged`, raw 변경 시 `updated`, FTS 검색 1건 이상 적중
+- [x] `normalize.py` 단위 테스트: `<br/>` 변형, 다중 빈 줄, 날짜 3형식·자리표시·빈 값, 구획 분할 오프셋(헤더 사이 텍스트가 정확히 잘리는지), `"null"` 문자열 처리
+- [x] `loader` 통합 테스트(tmp): ok/unavailable/missing 3종 행 생성, 재실행 시 `unchanged`, raw 변경 시 `updated`, FTS 검색 1건 이상 적중
 - [ ] `pytest` 통과(기본 실행)
 - [ ] 실제 적재 실행은 Claude가 수행(D-015)
 
@@ -57,7 +57,12 @@
 -
 
 ## 완료 보고 (Codex 작성)
-- 완료 일시(KST):
-- 변경 파일:
-- 검증 결과:
-- 남은 문제:
+- 완료 일시(KST): 2026-10-23 21:41 KST
+- 변경 파일: `src/precedent_summarizer/load/__init__.py`, `src/precedent_summarizer/load/normalize.py`, `src/precedent_summarizer/load/loader.py`, `tests/test_normalize.py`, `tests/test_loader.py`, `docs/tasks/TASK-002.md`, `docs/STATE.md`, `docs/worklog/2026-10-23.md`.
+- 구현: 순수 정규화 함수(문장 내부 공백·글자 보존), 날짜/구획/누락 필드, raw 목록 매핑 및 상세 우선 적재, ok/unavailable/missing 분류, 상세 SHA-256·메타 필드 비교로 멱등 upsert, 1,000행 커밋·중단 재개, FTS 재구축, load_runs 및 원자적 JSON 보고서, CLI --db/--rebuild-fts. summaries는 스키마 생성 외 쓰지 않음.
+- 보고서: 날짜 파싱 실패와 br 외 태그 건수는 고정 스키마의 errors에 prec_id·필드명·건수로 기록. NOT NULL data_source의 원본 빈 값은 빈 문자열로 보관하고 missing_fields에도 기록. FTS는 매 실행(강제 옵션 포함) 재구축해 중단 후 검색 인덱스도 동기화.
+- 검증 결과: `src`에서 `python -m pytest ../tests/test_normalize.py ../tests/test_loader.py ../tests/test_collect_supreme_court.py ../tests/test_law_client.py ../tests/test_config.py ../tests/test_security.py -q` → 54 passed(신규 20건). CLI help·git diff --check 정상.
+- 통합 검증: 세 상태·상세 우선·자리표시 날짜·정제 전후 필드·raw 바이트 보존·멱등·상세/메타 변경·미제공→정상 전환·FTS 적중·summaries 미작성·load_runs 이력. 1,002건 시나리오에서 별도 연결로 1,000행 커밋 확인, KeyboardInterrupt 후 재실행으로 unchanged 1,000 + inserted 2 검증. 테스트는 전부 작업용 tmp 가짜 raw/DB, 실제 data 및 네트워크 미사용.
+- 전체 pytest: 기존 anthropic 의존성 누락으로 테스트 수집 오류, live 2건 제외. 환경 설치 우회 및 실제 적재 실행 없음.
+- 커밋: `.git` 쓰기 제한/D-014에 따라 변경은 작업 트리에 유지. Claude 대리 커밋 대상 `codex/TASK-002-load`.
+- 남은 문제: Claude 환경에서 전체 pytest 및 실제 raw→DB 적재/건수 검증 필요(D-015). 실제 수집은 계속 진행 중이므로 적재 재실행으로 missing→ok 반영 필요.
