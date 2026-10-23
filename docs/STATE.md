@@ -1,26 +1,38 @@
 # STATE — 현재 상태 (세션마다 덮어써서 최신화, 80줄 이하)
 
-마지막 갱신: 2026-10-23 18:38 KST · 갱신자: Claude
+마지막 갱신: 2026-10-23 18:48 KST · 갱신자: Claude
 
 ## 현재 단계
-**P0 환경 구축 — 진행 중**
+**P0 환경 구축 — 완료(Anthropic 키 확인 대기)** → **P1 수집: TASK-001 Codex 배정 대기**
 
-## 완료
-- 저장소 생성: `C:\Users\hdim9\code\precedent-summarizer` ↔ `github.com/hdim91/precedent-summarizer`(private)
-- `.env.example` / `.gitignore` / README, 사용자 `.env` 키 입력 완료(값 미열람, 존재·무시 여부만 확인)
-- 규칙·의도·상태·결정·작업로그 문서, `AGENTS.md`·`CLAUDE.md`, Codex 작업 명세 템플릿
-- pre-commit 비밀유출 차단 hook
+## 완료 (P0)
+- 저장소 `C:\Users\hdim9\code\precedent-summarizer` ↔ GitHub private
+- 규칙·연속성 문서, AGENTS.md/CLAUDE.md, pre-commit 비밀유출 차단 hook
+- 패키지 골격: `config`, `common/security`(마스킹), `clients/law_go_kr`(HTTPS·예외 마스킹·raw 불변 저장), `schemas/precedent.py`, `schemas/db.sql`
+- `scripts/check_env.py`(존재 여부만), 테스트 13건 + live 1건 통과
+- OneDrive 원본 코드 키 노출 수정 및 기존 캐시 마스킹(D-011)
 
-## 다음 작업 (P0 잔여, 담당 Claude)
-1. `pyproject.toml`, `src/precedent_summarizer/` 패키지 골격
-2. `LawGoKrClient` 이식 + `common/security.py`(`mask_secrets`) 구현, 예외 메시지 OC 마스킹, https 전환 검증
-3. 키 존재 확인 스크립트(`scripts/check_env.py`, 값 비출력)
-4. P1 수집 명세 `docs/tasks/TASK-001.md` 작성 → Codex 배정
+## 차단 요인
+- `ANTHROPIC_API_KEY`: API 인증 401. 값 형식이 `sk-ant-`로 시작하지 않음 → 사용자가 재확인·재입력 필요 (P3 전까지 필요, P1·P2는 진행 가능)
 
-## 미결정 (사용자 결정 필요)
-- 웹 스택: FastAPI+Jinja2/HTMX(권장) vs Streamlit
-- 수집 범위: 대법원 전체 vs 최근 N년 / 특정 법 분야부터
+## 다음 작업
+1. TASK-001 Codex 배정(사용자가 Codex에 `docs/tasks/TASK-001.md` 전달) → 시범(2025년, 50건) 보고 → 전량
+2. Claude: TASK-002(P2 정제·적재) 명세 작성 — TASK-001 시범 결과로 필드 공백률 확인 후
+3. Claude: P3 요약 출력 스키마·프롬프트 초안
+
+## 미결정
+- 없음 (모델 ID는 P3 시범 후 확정)
 
 ## 알려진 리스크
-- 원본 `LawGoKrClient`(OneDrive CODE)는 예외 메시지에 OC 키가 포함된 URL이 그대로 남고, HTTP로 호출함 → 이 저장소 이식본에서 수정. 원본 수정 여부는 사용자 확인 필요.
-- 모델 ID(`claude-sonnet-5-5`, `claude-opus-5-5`)는 잠정값 — P3 시범 후 확정.
+- 전량 상세 수집 75,467회 호출 → 0.1s 간격·응답시간 고려 시 장시간(수 시간~하루). 재개 가능 설계로 대응
+- 전량 요약 비용 큼 → P3 시범 실측 후 예산 승인(BATCH_BUDGET_USD) 게이트
+- OneDrive 버전 기록에 마스킹 전 캐시가 남아 있음 — OneDrive 폴더를 외부와 공유 중이면 LAW_API_KEY 재발급 권장
+
+## 실행 방법 (Windows)
+```
+python -m venv .venv && .venv\Scripts\activate
+pip install -e ".[dev]"
+python scripts\check_env.py
+pytest            # live 제외
+pytest -m live    # 실제 API (키 필요)
+```

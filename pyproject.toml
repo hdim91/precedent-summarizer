@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "precedent-summarizer"
+version = "0.0.1"
+description = "대법원 판례 수집·요약(Claude API) 내부용 웹 프로그램"
+requires-python = ">=3.10"
+dependencies = [
+  "requests>=2.31",
+  "python-dotenv>=1.0",
+  "anthropic>=0.40",
+  "fastapi>=0.110",
+  "uvicorn>=0.27",
+  "jinja2>=3.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+precedent_summarizer = ["schemas/*.sql"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["live: 실제 API·실제 키를 사용하는 테스트(기본 제외, 명시 실행: pytest -m live)"]
+addopts = "-m 'not live'"

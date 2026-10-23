@@ -10,3 +10,7 @@
 | D-006 | 2026-10-23 13:18 | 저장소 위치 A안: OneDrive 밖 `C:\Users\hdim9\code\precedent-summarizer` + GitHub private | OneDrive와 `.git` 충돌 위험 |
 | D-007 | 2026-10-23 18:38 | 규칙 단일 원본 `docs/RULES.md`, 컨텍스트 연속성은 INTENT/STATE/worklog/DECISIONS 4종 문서로 관리 | 세션 단절·에이전트 간 인수인계 대비 |
 | D-008 | 2026-10-23 18:38 | 비밀정보: `.env` 열람 금지, 존재 여부만 확인, pre-commit hook으로 기계 차단, OC 키 URL 마스킹 의무 | law.go.kr은 키를 URL 파라미터로 전송 |
+| D-009 | 2026-10-23 18:43 | 웹 스택: FastAPI + Jinja2/HTMX | 사용자 결정(권장안). API(Claude)·화면(Codex) 분리 |
+| D-010 | 2026-10-23 18:43 | 수집 범위: 대법원 판례 전량(실측 75,467건), 선고연도 단위 구간 수집 | 사용자 결정. 연도 분할로 페이지 밀림 방지 |
+| D-011 | 2026-10-23 18:43 | OneDrive 원본 law_api/assembly_api의 키 노출 경로 수정, 기존 raw_cache 마스킹 | 사용자 결정. 응답 본문에도 OC 포함됨을 실측 |
+| D-012 | 2026-10-23 18:46 | `.env`는 프로젝트 루트 파일만 로드(상위 탐색 안 함), 이미 설정된 환경변수 우선 | 다른 프로젝트 .env 혼입 방지 |
