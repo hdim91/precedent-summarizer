@@ -2,7 +2,7 @@
 
 - 작성: Claude · 작성일시: 2026-10-23 18:48 KST
 - 담당: Codex · 브랜치: `codex/TASK-001-supreme-court-collector`
-- 상태: 구현 완료·실수집 검증 차단 (v2: 2026-10-23 19:05 KST 명세 개정 — 목록 갱신을 스냅샷 방식으로 변경, 아래 '질문' 답변 참조)
+- 상태: v2 병합 완료(69dc94b) → **v3 추가 요구 대기** (2026-10-23 19:25 KST)
 
 ## 목표
 law.go.kr Open API에서 **대법원 판례 전량(2026-10-23 실측 totalCnt=75,467)** 의 목록과 상세를 raw 캐시로 수집한다.
@@ -79,3 +79,37 @@ law.go.kr Open API에서 **대법원 판례 전량(2026-10-23 실측 totalCnt=75
 - 실제 시범: `--from-year 2025 --to-year 2025 --limit 50` 실행, DNS 조회 실패로 실제 수집 불가. `data/raw_cache/reports/collect_20261023_1918.json`: api_total_cnt=null, sum_year_items=0, manifest_count=0, detail_cached=0, detail_new=0, detail_failed=0, failures=2(총계·목록). 오류 응답 raw 미저장.
 - 보안 검사: 시범 종료 후 `data/` 전체 OC 검사 결과 마스킹되지 않은 값 0건. 고정 JSON 리포트 스키마를 유지해 검사 결과는 실행 로그 및 본 완료 보고에 기록; 위 보안 체크의 "수집 완료 후" 항목은 실제 수집 미완료로 보류.
 - 남은 문제: 네트워크 가능한 환경에서 실제 시범 및 전체 pytest 필요. STATE의 순서(시범 보고 → Claude 리뷰·커밋 → 전량)에 따라 전량 수집 미실행. 완료 조건의 전량 건수 일치도 미검증.
+
+---
+
+## Claude 리뷰 (2026-10-23 19:22~19:25 KST)
+- 판정: **v2 승인·병합**(`08eff8c` → merge `69dc94b`). 규칙 준수(raw 불변·마스킹·테스트 네트워크 미사용) 확인. 전체 pytest 23건 통과(Claude 환경).
+- Claude 환경 시범 실행(`--from-year 2025 --to-year 2025 --limit 50`, 17초):
+  - 목록: api_total_cnt 75,467 / 2025년 1,150건 스냅샷 완결, 매니페스트 1,150
+  - 상세: 성공 31 / 실패 19, 데이터 OC 미마스킹 0건
+  - 빈 필드(성공 31건 중): 판시사항 2, 판결요지 6, 참조조문 2, 참조판례 7, 판례내용 0
+- **발견: 실패 19건 전부 `데이터출처명=국세법령정보시스템`.** 상세 API가 JSON/XML 모두 `{"Law": "일치하는 판례가 없습니다..."}`를 반환(HTTP 200). 즉 오류가 아니라 **API가 본문을 제공하지 않는 출처**다.
+  - 2025년 목록 출처 분포: 대법원 697 / 국세법령정보시스템 383 / 지방세법령정보시스템 70. 국세 383건 중 대법원 출처와 사건번호가 겹치는 것은 13건뿐(대부분 고유 사건).
+  - 연도별 표본(각 1페이지): 1960·1985 국세 0%, 2010 23%, 2020 31% — 최근일수록 비중 큼.
+  - 이대로 전량을 돌리면 국세 건이 몰린 구간에서 "연속 실패 20건" 중단이 걸릴 수 있다 → 전량 수집 전 v3 필수.
+
+## v3 추가 요구사항 (Codex, 브랜치 `codex/TASK-001-v3-unavailable`)
+1. **상세 미제공 분류**: 상세 응답이 `{"Law": "일치하는 판례가 없습니다..."}` 형태(최상위 키 `Law`, 문자열)면 실패가 아니라 `unavailable`로 분류한다.
+   - 연속 실패 카운터에 넣지 않는다.
+   - 마커 파일 `prec_detail_unavailable/{판례일련번호}.json`을 1회 저장(불변): `{"prec_id","data_source","checked_at"(KST),"api_message"}`. 이 파일은 응답 원문이 아닌 파생 기록이며 `save_raw_response`가 아닌 원자적 JSON 쓰기 사용, 이미 있으면 쓰지 않음.
+   - 마커가 있으면 재호출하지 않는다. `--recheck-unavailable` 플래그가 있을 때만 재호출(결과가 정상이면 `prec_detail/`에 저장, 마커는 그대로 둠).
+2. **매니페스트**에 `data_source`(목록의 `데이터출처명`) 필드 추가.
+3. **리포트**에 추가: `detail_unavailable`, `by_data_source: {출처명: {"listed","cached","unavailable","failed"}}`, `security_scan_unmasked_oc`(정수). 완료 조건 변경: `manifest_count == detail_cached + detail_unavailable + detail_failed`(limit 미사용 시).
+4. **연속 실패 카운터**: 캐시 적중(기존 파일 정상 파싱)도 성공으로 보고 0으로 초기화.
+5. **보안 스캔 범위**: 기본은 이번 실행에서 새로 쓴 파일 + `reports/`만 검사. `--full-security-scan`일 때만 `data/` 전체(전량 7.5만 파일 반복 스캔 비용 방지).
+6. 테스트: 위 1~5 각각 FakeSession 시나리오 추가.
+- 변경 금지 파일은 v2와 동일. 실제 네트워크 실행(시범·전량)은 Codex 환경에서 불가하므로 **Claude가 수행**한다(D-015).
+
+## 질문 (v3)
+-
+
+## 완료 보고 (v3, Codex 작성)
+- 완료 일시(KST):
+- 변경 파일:
+- 검증 결과:
+- 남은 문제:
