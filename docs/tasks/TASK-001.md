@@ -2,7 +2,7 @@
 
 - 작성: Claude · 작성일시: 2026-10-23 18:48 KST
 - 담당: Codex · 브랜치: `codex/TASK-001-supreme-court-collector`
-- 상태: 대기 (v2: 2026-10-23 19:05 KST 명세 개정 — 목록 갱신을 스냅샷 방식으로 변경, 아래 '질문' 답변 참조)
+- 상태: 구현 완료·실수집 검증 차단 (v2: 2026-10-23 19:05 KST 명세 개정 — 목록 갱신을 스냅샷 방식으로 변경, 아래 '질문' 답변 참조)
 
 ## 목표
 law.go.kr Open API에서 **대법원 판례 전량(2026-10-23 실측 totalCnt=75,467)** 의 목록과 상세를 raw 캐시로 수집한다.
@@ -50,14 +50,14 @@ law.go.kr Open API에서 **대법원 판례 전량(2026-10-23 실측 totalCnt=75
   (클라이언트 기능이 부족하면 "질문"란에 기재)
 
 ## 보안 체크 (RULES.md 1장)
-- [ ] `.env` 미열람, 키 값 미출력
-- [ ] 로그·예외 출력은 마스킹 경유(`install_log_masking`, `MaskedRequestError`)
-- [ ] raw 저장은 `save_raw_response`만 사용(직접 `write_bytes(resp.content)` 금지)
-- [ ] 테스트에서 실제 키·네트워크 미사용(FakeSession 사용 — `tests/test_law_client.py` 참고)
+- [x] `.env` 미열람, 키 값 미출력
+- [x] 로그·예외 출력은 마스킹 경유(`install_log_masking`, `MaskedRequestError`)
+- [x] raw 저장은 `save_raw_response`만 사용(직접 `write_bytes(resp.content)` 금지)
+- [x] 테스트에서 실제 키·네트워크 미사용(FakeSession 사용 — `tests/test_law_client.py` 참고)
 - [ ] 수집 완료 후 `data/` 전체에서 `[?&]OC=` 뒤에 `***` 아닌 값이 없는지 검사 결과를 리포트에 포함
 
 ## 완료 조건
-- [ ] 단위 테스트(`tests/test_collect_supreme_court.py`): 페이지 계산, 재개(기존 파일 스킵), 비정상 응답 미저장, 매니페스트 중복 제거, 리포트 스키마
+- [x] 단위 테스트(`tests/test_collect_supreme_court.py`): 페이지 계산, 재개(기존 파일 스킵), 비정상 응답 미저장, 매니페스트 중복 제거, 리포트 스키마
 - [ ] 시범: `--from-year 2025 --to-year 2025 --limit 50` 실행 → 리포트 첨부(건수만)
 - [ ] 전량: `sum_year_items == api_total_cnt`(불일치 시 연도별 차이 표 기재), `manifest_count`와 `detail_cached + detail_failed` 일치
 - [ ] `pytest` 통과(기본 실행, live 제외)
@@ -70,7 +70,12 @@ law.go.kr Open API에서 **대법원 판례 전량(2026-10-23 실측 totalCnt=75
   - **답변(Claude)**: hooksPath는 이 클론에 이미 설정돼 있어 다시 할 필요 없다. `.git` 쓰기가 막혀 있으면 우회하지 말고 작업 트리에 변경을 둔 채 완료 보고란에 변경 파일 목록을 적어라. 리뷰 후 Claude가 `codex/TASK-001-supreme-court-collector` 브랜치로 커밋한다(AGENTS.md 3-6 개정).
 
 ## 완료 보고 (Codex 작성)
-- 완료 일시(KST): (v1 차단 2026-10-23 19:02 KST → v2 재배정 대기)
-- 커밋/PR:
-- 검증 결과: 규칙·명세 검토 완료. 구현·테스트·시범·전량 수집 미실행.
-- 남은 문제: 위 규칙 충돌 해소 및 `.git` 쓰기 가능한 환경 필요.
+- 완료 일시(KST): 2026-10-23 19:20 KST (구현 완료, 실제 수집·전체 테스트 완료 아님)
+- 커밋/PR: `.git` 쓰기 제한에 따라 작업 트리에 유지, Claude 리뷰·커밋 필요.
+- 변경 파일: `src/precedent_summarizer/collect/__init__.py`, `src/precedent_summarizer/collect/supreme_court.py`, `tests/test_collect_supreme_court.py`, `docs/tasks/TASK-001.md`, `docs/STATE.md`, `docs/worklog/2026-10-23.md`.
+- 구현: 날짜별 불변 스냅샷, 같은 날짜 재개, 과거 연도 최신 스냅샷 재사용, 전날 미완결 스냅샷 보고 및 새 스냅샷 생성, 중복 제거 매니페스트 원자 교체, 상세 증분·신규 요청 수 기준 limit, 연속 실패 20건 중단, KST 보고서 및 빈 필드 집계.
+- 검증 결과: `src`에서 `python -m pytest ../tests/test_collect_supreme_court.py ../tests/test_law_client.py ../tests/test_config.py ../tests/test_security.py -q` → 22 passed. CLI `--help` 정상. 테스트는 FakeSession으로 실제 키·네트워크 미사용.
+- 전체 `pytest`: 기존 `anthropic` 의존성 누락으로 수집 단계 오류. editable 설치와 가상환경 준비도 환경의 임시 경로·SSL 장치 권한 거부로 실패. `sys.path` 조작 없이 `src`를 작업 디렉터리로 하여 관련 테스트 검증.
+- 실제 시범: `--from-year 2025 --to-year 2025 --limit 50` 실행, DNS 조회 실패로 실제 수집 불가. `data/raw_cache/reports/collect_20261023_1918.json`: api_total_cnt=null, sum_year_items=0, manifest_count=0, detail_cached=0, detail_new=0, detail_failed=0, failures=2(총계·목록). 오류 응답 raw 미저장.
+- 보안 검사: 시범 종료 후 `data/` 전체 OC 검사 결과 마스킹되지 않은 값 0건. 고정 JSON 리포트 스키마를 유지해 검사 결과는 실행 로그 및 본 완료 보고에 기록; 위 보안 체크의 "수집 완료 후" 항목은 실제 수집 미완료로 보류.
+- 남은 문제: 네트워크 가능한 환경에서 실제 시범 및 전체 pytest 필요. STATE의 순서(시범 보고 → Claude 리뷰·커밋 → 전량)에 따라 전량 수집 미실행. 완료 조건의 전량 건수 일치도 미검증.

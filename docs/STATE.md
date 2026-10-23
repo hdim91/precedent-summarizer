@@ -1,9 +1,9 @@
 # STATE — 현재 상태 (세션마다 덮어써서 최신화, 80줄 이하)
 
-마지막 갱신: 2026-10-23 19:05 KST · 갱신자: Claude
+마지막 갱신: 2026-10-23 19:20 KST · 갱신자: Codex
 
 ## 현재 단계
-**P0 환경 구축 — 완료** → **P1 수집: TASK-001 v2 재배정 대기**
+**P0 환경 구축 — 완료** → **P1 수집: TASK-001 v2 구현 완료·실수집 검증 차단**
 
 ## 완료 (P0)
 - 저장소 `C:\Users\hdim9\code\precedent-summarizer` ↔ GitHub private
@@ -14,11 +14,13 @@
 - OneDrive 원본 코드 키 노출 수정 및 기존 캐시 마스킹(D-011)
 
 ## 차단 요인
-- 없음. (해소: TASK-001 v1 규칙 충돌 → v2 스냅샷 방식 D-013 / Codex `.git` 쓰기 거부 → Claude 대리 커밋 D-014)
+- 실행 환경에서 law.go.kr DNS 조회 실패: 시범 0건, 마스킹된 실패 리포트 저장.
+- 전체 pytest는 기존 anthropic 의존성 누락으로 수집 실패; 관련 테스트 22건 통과.
+- `.git` 쓰기 제한: 작업 트리 변경을 Claude가 리뷰·커밋(D-014).
 - Anthropic 키 검증 완료(18:56): `claude-sonnet-5-5`·`claude-opus-5-5` 조회, Messages 호출 정상
 
 ## 다음 작업
-1. TASK-001 v2 Codex 재배정 → 시범(2025년, 50건) 보고 → Claude 리뷰·커밋 → 전량
+1. Claude: TASK-001 구현 리뷰·의존성 설치 → 네트워크 가능한 환경에서 시범(2025년, 50건) 및 전체 pytest → 커밋 → 전량
 2. Claude: TASK-002(P2 정제·적재) 명세 작성 — TASK-001 시범 결과로 필드 공백률 확인 후
 3. Claude: P3 요약 출력 스키마·프롬프트 초안
 
