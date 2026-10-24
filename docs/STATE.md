@@ -1,9 +1,9 @@
 # STATE — 현재 상태 (세션마다 덮어써서 최신화, 80줄 이하)
 
-마지막 갱신: 2026-10-24 07:06 KST · 갱신자: Claude
+마지막 갱신: 2026-10-24 15:52 KST · 갱신자: Claude
 
 ## 현재 단계
-**P1 수집 완료**(목록 75,467 / 상세 64,799 / 미제공 7,242, undated 상세 3,426 남음) · **P2 TASK-002 병합, 실제 적재 PC 실행 대기** · **P3 Sonnet/Opus 비교 시험 완료 → 모델 결정 대기**
+**P1·P2 완료**(DB 75,467행) · TASK-002b Codex 진행 중 · **P3 모델 (C) 확정** · **P4 배치 모듈 완성(드라이런만, 미제출)** — 입력 변형(blind/official) 결정 대기
 
 ## 완료
 - P0 전체(저장소·규칙·보안 hook·패키지 골격·클라이언트·키 검증) — 상세는 worklog
@@ -15,17 +15,20 @@
 
 - TASK-002: 정규화·멱등 SQLite 적재·FTS·load_runs 구현, 관련 54건 통과(신규 20건)
 
+- TASK-002b: 날짜 보강·심리불속행·v2 DB 호환·warnings 분리 구현, 관련 76건 통과. 실제 재적재 대기.
+
 ## 차단 요인
 - v4 실제 undated 수집·총계 검증은 Claude/사용자 환경에서 진행 필요.
-- Codex 환경 전체 pytest는 anthropic 미설치로 차단, TASK-002 포함 관련 테스트 54건 통과.
+- Codex 환경 전체 pytest는 anthropic 미설치로 차단, TASK-002b 포함 관련 테스트 76건 통과.
 
 ## 다음 작업
-1. 사용자(PC): undated 상세 수집(수집 명령 재실행) → 적재 `python -m precedent_summarizer.load.loader`
-2. 사용자: 요약 모델 결정(비교 결과 `docs/notes/pilot_ab_20261024.md`)
-3. Claude: P4 배치 파이프라인(Message Batches, 예산 상한 BATCH_BUDGET_USD, 최신순)
+1. 사용자: 입력 변형 평가 방식 승인(아래 '미결정')
+2. Codex: TASK-002b → Claude 리뷰 → 사용자 PC 재적재(심리불속행·추정 선고일 반영 후 선정)
+3. Claude/사용자: 평가 배치 → 본 배치(PC에서 `python -m precedent_summarizer.engine.batch submit ...`)
 
 ## 미결정 (사용자)
-- 국세 출처 본문: 현재 (a) 메타만 보관으로 진행(D-017). 대체 경로로 공공데이터 제공신청 여부 결정 필요 — `docs/notes/source_tax_precedents.md`
+- 판시사항·판결요지 입력 여부: (가) 평가용 60~120건만 두 버전 → 채점 후 결정(추가 약 $5~11) (나) 전량 두 버전(처리량 절반, 1,233건)
+- 국세 출처 본문 공공데이터 제공신청 여부(D-017)
 
 ## 운영 방식
 - Codex: 코드·가짜 응답 테스트까지(네트워크·venv 불가). 실제 API 실행은 Claude(D-015). git 커밋은 Claude 대리(D-014)
