@@ -2,7 +2,7 @@
 
 - 작성: Claude · 작성일시: 2026-10-24 20:45 KST
 - 담당: Codex · 브랜치: `codex/TASK-003b-design`
-- 상태: 대기
+- 상태: 구현·자동 검증 완료, 사용자 PC 화면 검토 대기
 - 사용자 피드백(20:39): "디자인이 밋밋하다. 전문적이면서도 세련된 디자인으로."
 
 ## 목표
@@ -50,16 +50,25 @@ TASK-003의 기능·구조는 유지하고, **시각 완성도**를 법률 전�
 - `web/app.py`, `web/highlight.py`, `engine/`, `schemas/`, `load/`, `collect/`, `clients/`, `common/`, `docs/RULES.md`·`INTENT.md`·`DECISIONS.md`, `scripts/hooks/`
 
 ## 완료 조건
-- [ ] 기존 웹 테스트 + `splitByRanges` 테스트 통과, 미니맵 위치 계산을 순수 함수로 분리하고 테스트 추가
-- [ ] 디자인 토큰 목록(색·글꼴·간격·반경)을 `src/precedent_summarizer/web/static/DESIGN.md`에 정리
-- [ ] 완료 보고에 디자인 의도(5줄 내외)와 화면별 변경 요점
+- [x] 기존 웹 테스트 + `splitByRanges` 테스트 통과, 미니맵 위치 계산을 순수 함수로 분리하고 테스트 추가
+- [x] 디자인 토큰 목록(색·글꼴·간격·반경)을 `src/precedent_summarizer/web/static/DESIGN.md`에 정리
+- [x] 완료 보고에 디자인 의도(5줄 내외)와 화면별 변경 요점
 - [ ] 실제 화면 검토는 사용자 PC(Claude가 스크린샷으로 확인)
 
 ## 질문 (Codex → Claude)
 -
 
 ## 완료 보고 (Codex 작성)
-- 완료 일시(KST):
-- 변경 파일:
-- 검증 결과:
-- 남은 문제:
+- 완료 일시(KST): 2026-10-24 20:48 KST
+- 변경 파일: `src/precedent_summarizer/web/static/app.css`, `app.js`, `DESIGN.md`, `src/precedent_summarizer/web/templates/base.html`, `index.html`, `detail.html`, `tests/test_web_highlight.cjs`, `docs/tasks/TASK-003b.md`, `docs/STATE.md`, `docs/worklog/2026-10-24.md`.
+- 디자인 의도:
+  - 네이비 잉크·종이색 원문·버건디 강조로 디지털 판례집의 권위와 워크벤치의 정보 위계를 결합.
+  - UI/요약 산세리프와 사건 표제/원문 세리프를 구분하고 5단계 이상 크기·라벨 자간 체계를 적용.
+  - 통계·검색·표는 절제된 경계와 숫자 중심으로, 독서 화면은 원문과 요약의 대응을 중심으로 설계.
+  - 근거 번호 칩과 세로 미니맵이 같은 인용 구간으로 연결되며 검증 상태는 작은 인장 배지로 표현.
+  - 별도 다크 팔레트, 8px 기반 간격, 키보드 초점·감소된 모션·인쇄 레이아웃을 함께 구성.
+- 화면별 변경: 목록은 모노그램 워드마크·큰 통계 숫자·커맨드 바·접이식 필터·두 줄 요약, 600px 이하 카드 목록. 상세는 사건번호/세리프 표제/결론 배지, sticky 원문·구획 칩·미니맵·200ms 강조, 별도 톤의 법원 작성 접기 카드. 로딩 스켈레톤과 오류 재시도 제공. 인쇄 시 요약→원문, 높이/스크롤 제한 해제 및 근거 번호 유지.
+- 글꼴: 설치된 Pretendard/Noto Serif KR를 우선하고 OS 산세리프/세리프로 대체; 원격 폰트·추가 CDN 요청 없음. 실제 PC 글꼴에 따른 차이는 화면 검토 필요.
+- 검증 결과: 웹 TestClient+Node 실행 9 passed. 미니맵 순수 함수 `minimapPositions`는 코드포인트 위치 비율·null/범위 밖·빈 원문·중복 위치·API 순서 번호 보존 검증. `splitByRanges` 기존 테스트 및 JS 구문 검사 통과. 회귀 테스트 `python -m pytest ../tests --ignore=../tests/test_anthropic_client.py -q` → 103 passed, 2 deselected(live). 전체 테스트의 기존 anthropic 의존성 문제는 유지.
+- 대비 검사: 본문/원문/보조 정보/강조/의미 배지의 텍스트 색상 쌍을 상대 휘도로 계산, 라이트 최소 5.15:1·다크 최소 6.18:1(4.5:1 이상). DESIGN.md에 색·글꼴·간격·반경·그림자·상태/반응형/인쇄 동작 기록. git diff --check 통과.
+- 남은 문제: 사용자 PC에서 실제 화면·sticky/미니맵 클릭·모바일/다크·인쇄 미리보기 스크린샷 검토 필요. 실제 DB/API 실행 없음. `.git` 읽기 전용이므로 변경은 작업 트리 유지, 리뷰 후 `codex/TASK-003b-design` 브랜치 커밋 필요.
