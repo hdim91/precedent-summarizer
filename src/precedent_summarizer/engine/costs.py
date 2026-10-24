@@ -2,7 +2,7 @@
 
 단가: Claude Platform 가격표(2026-10-23 확인) Batch API = 표준의 50%.
   https://platform.claude.com/docs/en/about-claude/pricing
-토큰 추정식: 2026-10-24 비교 시험 65건 실측(한국어 본문 ≈ 1토큰/자, 출력에 내부 추론 포함).
+토큰 추정식: 2026-10-23~24 시범·비교 시험 요약 74개(판결 39건) 실측(한국어 본문 ≈ 1토큰/자, 출력에 내부 추론 포함).
 """
 from __future__ import annotations
 
