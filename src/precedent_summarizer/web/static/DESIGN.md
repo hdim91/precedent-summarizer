@@ -26,7 +26,7 @@
 
 - `--font-ui`: Pretendard → Apple/Windows 시스템 산세리프 → Malgun Gothic → sans-serif.
 - `--font-record`: Noto Serif KR → Nanum Myeongjo → Batang → Times New Roman → serif.
-- 설치된 권장 글꼴을 우선 사용한다. 원격 폰트/CDN 요청은 없으며 미설치 환경에서는 시스템 대체 글꼴로 표시한다.
+- 웹폰트(버전 고정): Pretendard v1.3.9(jsdelivr, 동적 서브셋), Noto Serif KR 400/600/700(Google Fonts, `display=swap`). 오프라인·차단 시 시스템 대체 글꼴로 표시(2026-10-24 Claude 리뷰 반영).
 - `--t-label` 11px / `--t-note` 13px / `--t-body` 15px / `--t-section` 18px / `--t-lead` 22px / `--t-title` 30.4~44px.
 - 원문 16px·줄간격 2.0·최대 45ic, 요약 15px·줄간격 1.9. 라벨 자간 0.12~0.16em. 숫자·날짜·사건번호는 tabular-nums.
 - 원문 텍스트에는 공백·줄바꿈 삽입이나 HTML 재해석을 하지 않는다.
