@@ -1,4 +1,4 @@
--- SQLite 스키마 v2 (Claude 소유, 2026-10-23 21:30 KST). P2(정제·적재)·P3(요약)에서 사용.
+-- SQLite 스키마 v3 (Claude 소유, v2 2026-10-23 21:30 / v3 2026-10-24 15:10 KST). P2(정제·적재)·P3(요약)에서 사용.
 -- v1 대비: detail_status/data_source/date_status 추가, raw_detail_path nullable(미제공 출처),
 --          정제본(clean)·구획(sections_json) 컬럼 추가, FTS는 정제본 대상, summaries 테이블 추가.
 PRAGMA journal_mode = WAL;
@@ -35,11 +35,17 @@ CREATE TABLE IF NOT EXISTS precedents (
     raw_detail_path   TEXT,                        -- raw_cache 기준 상대경로(미제공이면 NULL)
     list_file         TEXT NOT NULL,               -- 출처 목록 스냅샷 파일
     content_sha256    TEXT,                        -- raw 상세 본문 해시
-    loaded_at         TEXT NOT NULL                -- ISO8601 KST
+    loaded_at         TEXT NOT NULL,               -- ISO8601 KST
+    -- v3 추가(TASK-002b). 기존 DB는 loader가 ALTER TABLE로 보강
+    case_year              INTEGER,                -- 사건번호 앞 4자리(접수연도). 선고연도 아님
+    decision_date_inferred TEXT,                   -- date_status='placeholder'일 때 본문 끝 선고일 표기에서 추출한 YYYY-MM-DD
+    date_inferred_from     TEXT,                   -- 'body_signature' | NULL
+    is_summary_dismissal   INTEGER NOT NULL DEFAULT 0  -- 심리불속행 기각(상고심절차에 관한 특례법 제4조·제5조) 여부
 );
 CREATE INDEX IF NOT EXISTS idx_prec_date   ON precedents(decision_date);
 CREATE INDEX IF NOT EXISTS idx_prec_caseno ON precedents(case_no);
 CREATE INDEX IF NOT EXISTS idx_prec_status ON precedents(detail_status, data_source);
+-- v3 인덱스(case_year, decision_date_inferred)는 컬럼 보강 이후 loader가 생성
 
 CREATE VIRTUAL TABLE IF NOT EXISTS precedents_fts USING fts5(
     case_no, case_name, holdings_clean, official_summary_clean, full_text_clean,
