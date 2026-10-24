@@ -58,6 +58,7 @@ def main():
     ap.add_argument("--ids-file", action="append", required=True)
     ap.add_argument("--judge", required=True); ap.add_argument("--out", required=True)
     ap.add_argument("--workers", type=int, default=4); ap.add_argument("--seed", type=int, default=20261024)
+    ap.add_argument("--record-cost", action="store_true", help="채점 비용을 DB 장부(extra_costs)에 기록 — PC에서만(D-022)")
     a = ap.parse_args()
     install_log_masking()
     s = get_settings(); client = make_client(s)
@@ -94,6 +95,17 @@ def main():
 
     with ThreadPoolExecutor(max_workers=a.workers) as ex:
         list(ex.map(one, ids))
+    # 채점 비용 집계(표준 단가) — 예산 상한에 포함(D-023)
+    from precedent_summarizer.engine.costs import actual_cost
+    total = 0.0
+    for f in out.glob("*.json"):
+        u = json.loads(f.read_text(encoding="utf-8")).get("usage") or {}
+        total += actual_cost(a.judge, {"input_tokens": u.get("in", 0), "output_tokens": u.get("out", 0)}, batch=False)
+    print(f"채점 비용(이 폴더 누적, 표준 단가): ${total:.4f}")
+    if a.record_cost:
+        from precedent_summarizer.engine.batch import connect, record_extra_cost
+        record_extra_cost(connect(s.db_path), "eval_judge", total, a.judge, f"eval_{a.out}")
+        print("장부(extra_costs)에 기록했습니다.")
 
 
 if __name__ == "__main__":

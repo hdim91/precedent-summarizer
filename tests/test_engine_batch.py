@@ -115,6 +115,28 @@ def test_submit_collect_verify_and_retry(tmp_path):
     assert B.retry_plan(conn, s, "blind", budget=10)["n"] == 0  # 재시도는 1회만
 
 
+def test_expired_retries_with_same_model_and_extra_costs_count(tmp_path):
+    conn = make_db(tmp_path, [dict(id="1", date="2025-01-01")])
+    s = settings(tmp_path)
+    conn.execute("INSERT INTO batch_runs VALUES ('b1','blind','t','collected',1,0.01,0,'')")
+    conn.execute("INSERT INTO batch_items(batch_id,custom_id,prec_id,variant,model,attempt,est_cost_usd,result_type,cost_usd) "
+                 "VALUES ('b1','1-b-s-1','1','blind',?,1,0.01,'expired',0)", (s.model_default,))
+    conn.commit()
+    r = B.retry_plan(conn, s, "blind", budget=10)
+    assert r["n"] == 1 and r["_items"][0][1] == s.model_default and r["_items"][0][3] == 2
+    B.record_extra_cost(conn, "eval_judge", 1.5, "claude-opus-5-5")
+    assert B.spent_and_pending(conn)[0] == pytest.approx(1.5)
+
+
+def test_chunks_split_by_bytes(tmp_path):
+    conn = make_db(tmp_path, [dict(id=str(i), date=f"2025-01-{i:02d}") for i in range(1, 6)])
+    s = settings(tmp_path)
+    p = B.plan(conn, s, "blind", budget=10, max_n=None)
+    one = len(json.dumps(B.build_request(p["_items"][0][0], s.model_default, "blind", 1), ensure_ascii=False).encode())
+    chunks = list(B._chunks(p["_items"], "blind", 1, max_bytes=int(one * 2.5)))
+    assert [len(c) for c, _ in chunks] == [2, 2, 1]
+
+
 def test_custom_id_format():
     cid = B.custom_id("619499", "official", "claude-opus-5-5", 2)
     assert cid == "619499-o-o-2" and B.parse_custom_id(cid) == ("619499", "official", 2)

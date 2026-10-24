@@ -24,3 +24,13 @@ CREATE TABLE IF NOT EXISTS batch_items (
     PRIMARY KEY (batch_id, custom_id)
 );
 CREATE INDEX IF NOT EXISTS idx_bitems_prec ON batch_items(prec_id, variant);
+
+-- 배치 외 API 비용(평가 채점 등). 예산 상한 계산에 포함(D-023)
+CREATE TABLE IF NOT EXISTS extra_costs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at  TEXT NOT NULL,
+    purpose     TEXT NOT NULL,                  -- 예: eval_judge
+    model       TEXT,
+    cost_usd    REAL NOT NULL,
+    note        TEXT
+);

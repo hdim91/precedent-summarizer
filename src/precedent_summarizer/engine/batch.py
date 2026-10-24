@@ -13,7 +13,10 @@
   정렬: COALESCE(decision_date, decision_date_inferred) 내림차순(최신순), 날짜 없으면 맨 뒤.
 - 모델 라우팅(D-020, 안 C): 일반 → CLAUDE_MODEL_DEFAULT, 장문(>15,000자)·전원합의체(다수의견·반대의견 존재) → CLAUDE_MODEL_COMPLEX.
   검증 실패 건은 retry에서 CLAUDE_MODEL_COMPLEX로 1회만 재요청.
-- 예산: 누적 실측 지출 + 미수거 배치 추정 + 이번 추정 ≤ budget(기본 BATCH_BUDGET_USD). 초과분은 잘라서 제출.
+- 예산(D-023): 배치 실측 지출 + 배치 외 API 비용(extra_costs) + 미수거 배치 추정 + 이번 추정 ≤ budget
+  (기본 BATCH_BUDGET_USD). 초과분은 잘라서 제출.
+- 배치 분할: 1만 건 또는 요청 JSON 합계 200MB(API 한도 256MB) 중 먼저 닿는 쪽.
+- 재시도: 검증 실패·파싱 실패·errored → 상위 모델(CLAUDE_MODEL_COMPLEX) 1회 / expired·canceled → 원래 모델 1회.
 """
 from __future__ import annotations
 
@@ -39,6 +42,7 @@ BATCH_SQL = Path(__file__).resolve().parents[1] / "schemas" / "batch.sql"
 MIN_CHARS = 300
 LONG_CHARS = 15000
 MAX_REQUESTS_PER_BATCH = 10000
+MAX_BATCH_BYTES = 200 * 1024 * 1024  # API 한도 256MB 대비 여유
 _MODEL_CODE = {"claude-sonnet-5-5": "s", "claude-opus-5-5": "o"}
 
 
@@ -100,8 +104,17 @@ def candidates(conn: sqlite3.Connection, variant: str, ids: Optional[list[str]] 
     return conn.execute(sql, params)
 
 
+def record_extra_cost(conn: sqlite3.Connection, purpose: str, cost_usd: float, model: Optional[str] = None,
+                      note: str = "") -> None:
+    """배치 외 API 호출 비용을 장부에 기록(예: 평가 채점). 예산 상한 계산에 포함된다."""
+    conn.execute("INSERT INTO extra_costs(created_at,purpose,model,cost_usd,note) VALUES (?,?,?,?,?)",
+                 (now(), purpose, model, float(cost_usd), note))
+    conn.commit()
+
+
 def spent_and_pending(conn: sqlite3.Connection) -> tuple[float, float]:
     spent = conn.execute("SELECT COALESCE(SUM(cost_usd),0) FROM batch_items WHERE cost_usd IS NOT NULL").fetchone()[0]
+    spent += conn.execute("SELECT COALESCE(SUM(cost_usd),0) FROM extra_costs").fetchone()[0]
     pending = conn.execute("SELECT COALESCE(SUM(b.est_cost_usd),0) FROM batch_items b JOIN batch_runs r USING(batch_id) "
                            "WHERE r.status!='collected'").fetchone()[0]
     return float(spent), float(pending)
@@ -137,20 +150,37 @@ def build_request(row, model: str, variant: str, attempt: int) -> dict:
     return {"custom_id": custom_id(row["prec_id"], variant, model, attempt), "params": params}
 
 
+def _chunks(items, variant: str, attempt: int, max_n: int = None, max_bytes: int = None):
+    """요청 건수·JSON 용량 한도로 나눈 (원본 묶음, 요청 목록) 생성."""
+    max_n = max_n or MAX_REQUESTS_PER_BATCH
+    max_bytes = max_bytes or MAX_BATCH_BYTES
+    cur, reqs, size = [], [], 0
+    for it in items:
+        r, m = it[0], it[1]
+        attempt_i = it[3] if len(it) > 3 else attempt
+        q = build_request(r, m, variant, attempt_i)
+        b = len(json.dumps(q, ensure_ascii=False).encode("utf-8"))
+        if cur and (len(cur) >= max_n or size + b > max_bytes):
+            yield cur, reqs
+            cur, reqs, size = [], [], 0
+        cur.append(it); reqs.append(q); size += b
+    if cur:
+        yield cur, reqs
+
+
 def submit(conn, client, p: dict, attempt: int = 1, note: str = "") -> list[str]:
     ids = []
     items = p["_items"]
-    for i in range(0, len(items), MAX_REQUESTS_PER_BATCH):
-        chunk = items[i:i + MAX_REQUESTS_PER_BATCH]
-        reqs = [build_request(r, m, p["variant"], attempt) for r, m, _ in chunk]
+    for chunk, reqs in _chunks(items, p["variant"], attempt):
         b = client.messages.batches.create(requests=reqs)
-        est = sum(c for _, _, c in chunk)
+        est = sum(it[2] for it in chunk)
         conn.execute("INSERT INTO batch_runs VALUES (?,?,?,?,?,?,?,?)",
                      (b.id, p["variant"], now(), "submitted", len(chunk), est, None, note))
         conn.executemany("INSERT INTO batch_items(batch_id,custom_id,prec_id,variant,model,attempt,est_cost_usd) "
                          "VALUES (?,?,?,?,?,?,?)",
-                         [(b.id, q["custom_id"], r["prec_id"], p["variant"], m, attempt, c)
-                          for q, (r, m, c) in zip(reqs, chunk)])
+                         [(b.id, q["custom_id"], it[0]["prec_id"], p["variant"], it[1],
+                           it[3] if len(it) > 3 else attempt, it[2])
+                          for q, it in zip(reqs, chunk)])
         conn.commit()
         ids.append(b.id)
         LOG.info("submitted %s (%d requests, est $%.2f)", b.id, len(chunk), est)
@@ -225,20 +255,31 @@ def collect(conn, client, s: Settings) -> list[dict]:
 
 
 def retry_plan(conn, s: Settings, variant: str, budget: float) -> dict:
-    """1차(attempt=1)에서 검증 실패·파싱 실패·errored인 건 → 상위 모델로 1회."""
+    """1차(attempt=1) 실패 건 1회 재시도.
+    - 품질 실패(검증·파싱 실패, errored) → 상위 모델
+    - 처리 실패(expired·canceled: 모델이 답하지 않음, 과금 없음) → 원래 모델 그대로
+    """
     rows = conn.execute(
-        "SELECT DISTINCT b.prec_id FROM batch_items b JOIN batch_runs r USING(batch_id) "
+        "SELECT b.prec_id, b.model, b.result_type FROM batch_items b JOIN batch_runs r USING(batch_id) "
         "WHERE r.status='collected' AND b.variant=? AND b.attempt=1 AND (b.verify_passed=0 OR b.result_type!='succeeded') "
         "AND NOT EXISTS (SELECT 1 FROM batch_items c WHERE c.prec_id=b.prec_id AND c.variant=b.variant AND c.attempt=2) "
         "AND NOT EXISTS (SELECT 1 FROM summaries x WHERE x.prec_id=b.prec_id AND x.version=?)",
         (variant, VARIANTS[variant])).fetchall()
-    ids = [r[0] for r in rows]
-    if not ids:
+    model_for = {r[0]: (r[1] if r[2] in ("expired", "canceled") else s.model_complex) for r in rows}
+    if not model_for:
         return {"variant": variant, "n": 0, "est_cost": 0, "_items": []}
-    p = plan(conn, s, variant, budget, None, ids)
-    p["_items"] = [(r, s.model_complex, est_cost(s.model_complex, len(r["full_text_clean"]))) for r, _, _ in p["_items"]]
-    p["est_cost"] = round(sum(c for _, _, c in p["_items"]), 4)
-    return p
+    spent, pending = spent_and_pending(conn)
+    room = budget - spent - pending
+    items, total = [], 0.0
+    for r in candidates(conn, variant, list(model_for)):
+        m = model_for[r["prec_id"]]
+        extra = len((r["holdings_clean"] or "") + (r["official_summary_clean"] or "")) if variant == "official" else 0
+        c = est_cost(m, len(r["full_text_clean"]), extra)
+        if total + c > room:
+            break
+        items.append((r, m, c, 2)); total += c
+    return {"variant": variant, "n": len(items), "est_cost": round(total, 4), "room": round(room, 4),
+            "by_model": {m: sum(1 for it in items if it[1] == m) for m in {it[1] for it in items}}, "_items": items}
 
 
 def public(p: dict) -> dict:
@@ -287,7 +328,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             print(json.dumps(r, ensure_ascii=False))
     elif a.cmd == "spend":
         spent, pending = spent_and_pending(conn)
-        print(f"실측 지출 ${spent:.4f} / 미수거 추정 ${pending:.4f} / 예산 ${budget or 0:.2f}")
+        extra = conn.execute("SELECT COALESCE(SUM(cost_usd),0) FROM extra_costs").fetchone()[0]
+        print(f"실측 지출 ${spent:.4f} (배치 외 ${extra:.4f} 포함) / 미수거 추정 ${pending:.4f} / "
+              f"예산 ${budget or 0:.2f} / 남은 여유 ${(budget or 0) - spent - pending:.4f}")
     return 0
 
 

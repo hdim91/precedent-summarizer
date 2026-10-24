@@ -30,8 +30,9 @@ def est_cost(model: str, chars: int, extra_chars: int = 0) -> float:
     return SAFETY * (inp * pi + SYSTEM_TOKENS * pw + out * po) / 1e6
 
 
-def actual_cost(model: str, usage: dict) -> float:
-    pi, po, pr, pw = BATCH_PRICES[model]
+def actual_cost(model: str, usage: dict, *, batch: bool = True) -> float:
+    """usage(dict) × 단가. batch=False면 표준(비배치) 단가 = 배치의 2배."""
+    pi, po, pr, pw = (p * (1 if batch else 2) for p in BATCH_PRICES[model])
     return (usage.get("input_tokens", 0) * pi + usage.get("output_tokens", 0) * po
             + usage.get("cache_read_input_tokens", 0) * pr
             + usage.get("cache_creation_input_tokens", 0) * pw) / 1e6
