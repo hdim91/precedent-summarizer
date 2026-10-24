@@ -24,6 +24,10 @@
 - `git add -A`/`git add .` 금지. **경로를 명시해 스테이징**한다. Codex가 작업 트리에서 동시에 작업 중일 수 있다.
 - 커밋 전 `git status --short`에서 내가 바꾸지 않은 파일이 보이면 스테이징하지 않는다.
 
+## 3-2. DB 접근 (2026-10-24 손상 사고 반영, D-022)
+- 원격 셸에서 `data/precedents.sqlite`를 쓰기 모드로 열지 않는다. 적재·배치 제출/수거는 사용자 PC에서 실행하도록 명령을 안내한다.
+- 읽기는 PC에서 쓰기 작업이 없을 때만 `sqlite3.connect("file:...?mode=ro", uri=True)`.
+
 ## 4. 세션 종료 시
 `docs/STATE.md` 덮어쓰기 → `docs/worklog/` 추가 → 결정 시 `docs/DECISIONS.md` 추가 → 커밋·푸시
 
