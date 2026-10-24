@@ -53,3 +53,38 @@ def split_sections(clean):
     return [dict(header=m.group(1), header_norm=re.sub(r'\s+', '', m.group(1)),
                  start=m.start(), end=matches[i+1].start() if i+1 < len(matches) else len(clean))
             for i, m in enumerate(matches)]
+
+
+
+def case_year(case_no):
+    match = re.match(r'^\s*(\d{4})', nullable(case_no) or '')
+    if match:
+        year = int(match[1])
+        if 1940 <= year <= date.today().year + 1:
+            return year
+    return None
+
+
+def infer_decision_date(full_text_clean):
+    tail = (full_text_clean or '')[-1000:]
+    matches = list(re.finditer(r'(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.', tail))
+    if not matches:
+        return None
+    match = matches[-1]
+    year, month, day = map(int, match.groups())
+    if year < 1948 or '대법관' not in tail[match.end():match.end() + 200]:
+        return None
+    try:
+        return date(year, month, day).isoformat()
+    except ValueError:
+        return None
+
+
+def is_summary_dismissal(full_text_clean):
+    text = full_text_clean or ''
+    compact = re.sub(r'\s+', '', text)
+    if ('상고심절차에관한특례법제4조' not in compact
+            or not ('같은법제5조에의하여' in compact or '특례법제5조' in compact)):
+        return False
+    reasons = [s for s in split_sections(text) if s['header_norm'] == '이유']
+    return bool(reasons) and all(s['end'] - s['start'] <= 1500 for s in reasons)

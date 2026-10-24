@@ -2,7 +2,7 @@
 
 - 작성: Claude · 작성일시: 2026-10-24 15:12 KST
 - 담당: Codex · 브랜치: `codex/TASK-002b-date-dismissal`
-- 상태: 대기
+- 상태: 구현·가짜 데이터 검증 완료, 리뷰·실제 재적재 대기
 
 ## 목표
 요약 대상 선정(최신순·요약 가치)을 위해 `precedents`에 4개 컬럼을 채운다(schema v3): `case_year`, `decision_date_inferred`, `date_inferred_from`, `is_summary_dismissal`.
@@ -26,18 +26,20 @@
 - `docs/RULES.md`, `docs/INTENT.md`, `docs/DECISIONS.md`, `src/precedent_summarizer/schemas/`, `engine/`, `prompts/`, `common/security.py`, `clients/`, `scripts/hooks/`, `data/raw_cache/**`
 
 ## 보안 체크
-- [ ] `.env` 미열람·키 미출력, 로그 마스킹 경유, 테스트는 tmp 가짜 데이터
+- [x] `.env` 미열람·키 미출력, 로그 마스킹 경유, 테스트는 tmp 가짜 데이터
 
 ## 완료 조건
-- [ ] 단위 테스트: `case_year`(4자리·2자리·빈 값·범위 밖), `infer_decision_date`(서명부 있음/없음, 본문 중간 날짜 무시, 무효 날짜), `is_summary_dismissal`(전형 문구, 이유가 긴 판결은 False)
-- [ ] 통합 테스트: v2 DB(새 컬럼 없음)에 실행 → 컬럼 추가·값 채움, 재실행 시 `unchanged`
+- [x] 단위 테스트: `case_year`(4자리·2자리·빈 값·범위 밖), `infer_decision_date`(서명부 있음/없음, 본문 중간 날짜 무시, 무효 날짜), `is_summary_dismissal`(전형 문구, 이유가 긴 판결은 False)
+- [x] 통합 테스트: v2 DB(새 컬럼 없음)에 실행 → 컬럼 추가·값 채움, 재실행 시 `unchanged`
 - [ ] `pytest` 통과. 실제 재적재는 사용자 PC(Claude 원격 셸은 I/O 병목)
 
 ## 질문 (Codex → Claude)
 -
 
 ## 완료 보고 (Codex 작성)
-- 완료 일시(KST):
-- 변경 파일:
-- 검증 결과:
-- 남은 문제:
+- 완료 일시(KST): 2026-10-24 15:34 KST
+- 변경 파일: `src/precedent_summarizer/load/normalize.py`, `src/precedent_summarizer/load/loader.py`, `tests/test_normalize.py`, `tests/test_loader.py`, `docs/tasks/TASK-002b.md`, `docs/STATE.md`, `docs/worklog/2026-10-24.md`.
+- 구현: PRAGMA 기반 누락 v3 컬럼 ALTER 및 두 인덱스 생성, case_year·서명부 날짜 보강·심리불속행 순수 함수, placeholder 행에만 보강일/근거 저장, 모든 행의 새 컬럼 비교를 포함한 멱등 판정, v2 보강 직후 기존 행 일괄 updated, 태그 warnings 분리 및 inferred_dates/summary_dismissals 집계. decision_date/date_status 및 raw는 보존.
+- 검증 결과: `src`에서 `python -m pytest ../tests/test_normalize.py ../tests/test_loader.py ../tests/test_collect_supreme_court.py ../tests/test_law_client.py ../tests/test_config.py ../tests/test_security.py -q` → 76 passed(이전 54 대비 22건 추가). v2 DB 생성→동일 상세 해시를 유지한 컬럼 보강·3행 updated→재실행 3행 unchanged, 파생값만 변경 시 updated, 정상 날짜 행의 보강 NULL, warnings/errors 분리 검증. git diff --check 통과.
+- 전체 pytest: 기존 anthropic 의존성 미설치로 테스트 수집 오류, live 2건 제외. 실제 키·네트워크·data 사용 없음. 스키마 파일 등 변경 금지 경로 수정 없음.
+- 남은 문제: 의존성이 설치된 환경에서 전체 pytest 및 사용자 PC 실제 전체 재적재·건수 확인 필요. `.git` 읽기 전용 환경이므로 변경은 작업 트리에 유지; 리뷰 후 `codex/TASK-002b-date-dismissal` 브랜치 커밋 필요.

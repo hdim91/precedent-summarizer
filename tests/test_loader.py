@@ -68,7 +68,7 @@ def test_bad_date_tags_invalid_record_and_metadata_change(tmp_path):
     write(path,body)
     report=load(root,db)
     assert any(e['error']=='Invalid decision_date' for e in report['errors'])
-    assert any(e['error']=='Other HTML tags in full_text: 2' for e in report['errors'])
+    assert any(e['error']=='Other HTML tags in full_text: 2' for e in report['warnings'])
     path=root/'prec_list'/'page.json';body=json.loads(path.read_text(encoding='utf-8'))
     body['PrecSearch']['prec'][2]['사건명']='바뀐 메타';write(path,body)
     report=load(root,db)
@@ -108,3 +108,52 @@ def test_thousand_row_commit_interruption_and_resume(tmp_path, monkeypatch):
         assert conn.execute('SELECT count(*) FROM precedents').fetchone()[0]==1002
         assert conn.execute("SELECT count(*) FROM precedents_fts WHERE precedents_fts MATCH '損害'").fetchone()[0]==0
         assert conn.execute("SELECT count(*) FROM precedents_fts WHERE precedents_fts MATCH '손해배상'").fetchone()[0]==1002
+
+
+
+def test_v2_upgrade_enrichment_hash_and_idempotency(tmp_path):
+    from precedent_summarizer.load.loader import SCHEMA
+    root,db=tmp_path/'raw',tmp_path/'db.sqlite'
+    fixture(root)
+    text='【이 유】상고심절차에 관한 특례법 제4조 같은 법 제5조에 의하여 상고를 기각한다. 2010. 3. 11. 재판장 대법관'
+    write(root/'prec_detail'/'1.json', {'PrecService': {'판례정보일련번호':'1', '사건번호':'2023두57982',
+        '선고일자':'0001.01.01', '판례내용':text}})
+    write(root/'prec_detail'/'3.json', {'PrecService': {'판례정보일련번호':'3', '사건번호':'2024다1',
+        '선고일자':'20250102', '판례내용':text+'<b>경고</b>'}})
+    load(root,db)
+    new_columns={'case_year','decision_date_inferred','date_inferred_from','is_summary_dismissal'}
+    # Make a real v2 database, carrying rows and identical raw hashes from the first load.
+    with sqlite3.connect(db) as source:
+        source.row_factory=sqlite3.Row
+        old_rows=[dict(r) for r in source.execute('SELECT * FROM precedents')]
+    v2_schema='\n'.join(line for line in SCHEMA.read_text(encoding='utf-8').splitlines()
+                         if not any(line.strip().startswith(c+' ') for c in new_columns))
+    v2_schema=v2_schema.replace('loaded_at         TEXT NOT NULL,','loaded_at         TEXT NOT NULL')
+    old_db=tmp_path/'v2.sqlite'
+    with sqlite3.connect(old_db) as conn:
+        conn.executescript(v2_schema)
+        assert not new_columns & {r[1] for r in conn.execute('PRAGMA table_info(precedents)')}
+        columns=[r[1] for r in conn.execute('PRAGMA table_info(precedents)')]
+        for row in old_rows:
+            conn.execute(f"INSERT INTO precedents ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})",
+                         [row[c] for c in columns])
+    report=load(root,old_db)
+    assert report['updated']==3 and report['unchanged']==0
+    assert report['inferred_dates']==1 and report['summary_dismissals']==2
+    assert report['warnings'] and not report['errors']
+    with sqlite3.connect(old_db) as conn:
+        conn.row_factory=sqlite3.Row
+        row=conn.execute("SELECT * FROM precedents WHERE prec_id='1'").fetchone()
+        assert row['case_year']==2023 and row['decision_date_inferred']=='2010-03-11'
+        assert row['date_inferred_from']=='body_signature' and row['is_summary_dismissal']==1
+        assert row['decision_date'] is None and row['date_status']=='placeholder'
+        row=conn.execute("SELECT * FROM precedents WHERE prec_id='3'").fetchone()
+        assert row['decision_date']=='2025-01-02' and row['decision_date_inferred'] is None
+        assert row['date_inferred_from'] is None
+        assert {r[1] for r in conn.execute('PRAGMA index_list(precedents)')} >= {'idx_prec_case_year','idx_prec_date_inf'}
+    report=load(root,old_db)
+    assert report['unchanged']==3 and report['updated']==0
+    # Changing just a derived value must trigger update despite an identical detail hash.
+    with sqlite3.connect(old_db) as conn:
+        conn.execute("UPDATE precedents SET case_year=NULL WHERE prec_id='1'")
+    assert load(root,old_db)['updated']==1
