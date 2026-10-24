@@ -33,3 +33,46 @@ def test_section_offsets():
     assert text[sections[0]['start']:sections[0]['end']] == '【주    문】\n상고 기각\n'
     assert text[sections[1]['start']:sections[1]['end']] == '【이 유】\n원문  그대로'
     assert split_sections(None) == []
+
+
+from datetime import date
+from precedent_summarizer.load.normalize import case_year, infer_decision_date, is_summary_dismissal
+
+
+@pytest.mark.parametrize('text,expected', [('2023두57982',2023), (' 2024다1',2024),
+    ('64도126',None), ('',None), (None,None), ('1939다1',None), ('9999다1',None), ('다2023',None)])
+def test_case_year(text, expected):
+    assert case_year(text) == expected
+
+
+def test_case_year_upper_bound():
+    assert case_year(str(date.today().year+1)+'다1') == date.today().year+1
+    assert case_year(str(date.today().year+2)+'다1') is None
+
+
+@pytest.mark.parametrize('text,expected', [
+    ('주문과 같이 판결한다.\n2010. 3. 11.\n재판장 대법관 홍길동', '2010-03-11'),
+    ('2010. 3. 11. 서명 없음', None),
+    ('2010. 3. 11. 대법관'+'가'*1100, None),
+    ('2023. 2. 30. 대법관', None),
+    ('1947. 1. 1. 대법관', None),
+    ('1948. 1. 1. 대법관', '1948-01-01'),
+    ('2010. 3. 11. 대법관 2020. 4. 2. 대법관', '2020-04-02'),
+    ('2010. 3. 11. 대법관 2020. 4. 2. 서명없음', None),
+    ('2010. 3. 11.'+'가'*201+'대법관', None),
+    (None, None),
+])
+def test_infer_signature_date(text, expected):
+    assert infer_decision_date(text) == expected
+
+
+@pytest.mark.parametrize('article5', ['같은 법 제5조에 의하여', '특례법 제5조'])
+def test_summary_dismissal_pattern_and_long_reason(article5):
+    text = '【주 문】상고 기각【이    유】상고심절차에 관한 특례법 제4조 '+article5+' 상고를 기각한다.'
+    assert is_summary_dismissal(text)
+    assert not is_summary_dismissal(text+'가'*1500)
+    assert not is_summary_dismissal(text.replace('제4조','제3조'))
+    assert not is_summary_dismissal(text.replace('【이    유】',''))
+    assert not is_summary_dismissal(None)
+    # A long order does not count toward the reasons section length.
+    assert is_summary_dismissal(text.replace('상고 기각', '가'*1600))

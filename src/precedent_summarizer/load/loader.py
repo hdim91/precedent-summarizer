@@ -14,7 +14,7 @@ from uuid import uuid4
 from precedent_summarizer.common.security import install_log_masking, mask_secrets
 from precedent_summarizer.config import get_settings
 from precedent_summarizer.schemas.precedent import LIST_FIELD_MAP, DETAIL_FIELD_MAP
-from precedent_summarizer.load.normalize import nullable, clean_text, parse_date, split_sections, other_tag_count
+from precedent_summarizer.load.normalize import nullable, clean_text, parse_date, split_sections, other_tag_count, case_year, infer_decision_date, is_summary_dismissal
 
 KST = timezone(timedelta(hours=9))
 SCHEMA = Path(__file__).resolve().parents[1] / 'schemas' / 'db.sql'
@@ -87,7 +87,28 @@ def make_row(root, record, pages, issues):
                   raw_detail_path=path.relative_to(root).as_posix() if raw is not None else None,
                   list_file=list_file, content_sha256=hashlib.sha256(raw).hexdigest() if raw is not None else None,
                   loaded_at=stamp())
+    inferred = infer_decision_date(fields['full_text_clean']) if fields['date_status'] == 'placeholder' else None
+    fields.update(case_year=case_year(fields.get('case_no')),
+                  decision_date_inferred=inferred,
+                  date_inferred_from='body_signature' if inferred else None,
+                  is_summary_dismissal=int(is_summary_dismissal(fields['full_text_clean'])))
     return fields
+
+
+def upgrade_schema(conn):
+    definitions = {
+        'case_year': 'INTEGER',
+        'decision_date_inferred': 'TEXT',
+        'date_inferred_from': 'TEXT',
+        'is_summary_dismissal': 'INTEGER NOT NULL DEFAULT 0',
+    }
+    columns = {row[1] for row in conn.execute('PRAGMA table_info(precedents)')}
+    for column, definition in definitions.items():
+        if column not in columns:
+            conn.execute(f'ALTER TABLE precedents ADD COLUMN {column} {definition}')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_prec_case_year ON precedents(case_year)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_prec_date_inf ON precedents(decision_date_inferred)')
+    return bool(set(definitions) - columns)
 
 
 def load(root, db_path, *, rebuild_fts=False, report_dir=None):
@@ -96,7 +117,7 @@ def load(root, db_path, *, rebuild_fts=False, report_dir=None):
     root, db_path = Path(root), Path(db_path)
     report = dict(run_started=stamp(), run_finished=None, manifest_count=0, inserted=0,
                   updated=0, unchanged=0, by_detail_status={}, by_data_source={},
-                  missing_field_counts={}, no_order_section=0, errors=[])
+                  missing_field_counts={}, no_order_section=0, errors=[], warnings=[], inferred_dates=0, summary_dismissals=0)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     pages = {}
     status_counts, source_counts, missing_counts = Counter(), Counter(), Counter()
@@ -105,6 +126,7 @@ def load(root, db_path, *, rebuild_fts=False, report_dir=None):
     conn.row_factory = sqlite3.Row
     try:
         conn.executescript(SCHEMA.read_text(encoding='utf-8'))
+        schema_upgraded = upgrade_schema(conn)
         conn.execute('INSERT INTO load_runs(run_id, started_at) VALUES (?, ?)', (run_id, report['run_started']))
         conn.commit()
         seen = set()
@@ -120,13 +142,15 @@ def load(root, db_path, *, rebuild_fts=False, report_dir=None):
                         continue
                     seen.add(ident)
                     report['manifest_count'] += 1
-                    row = make_row(root, record, pages, report['errors'])
+                    issues = []
+                    row = make_row(root, record, pages, issues)
+                    for issue in issues:
+                        target = 'warnings' if issue['error'].startswith('Other HTML tags ') else 'errors'
+                        report[target].append(issue)
                     old = conn.execute('SELECT * FROM precedents WHERE prec_id=?', (ident,)).fetchone()
                     if old is None:
                         action = 'inserted'
-                    elif row['content_sha256'] is not None and old['content_sha256'] == row['content_sha256']:
-                        action = 'unchanged'
-                    elif all(old[k] == v for k, v in row.items() if k != 'loaded_at'):
+                    elif not schema_upgraded and all(old[k] == v for k, v in row.items() if k != 'loaded_at'):
                         action = 'unchanged'
                     else:
                         action = 'updated'
@@ -140,6 +164,8 @@ def load(root, db_path, *, rebuild_fts=False, report_dir=None):
                     source_counts[row['data_source']] += 1
                     missing_counts.update(json.loads(row['missing_fields']))
                     report['no_order_section'] += not row['has_order_section']
+                    report['inferred_dates'] += row['decision_date_inferred'] is not None
+                    report['summary_dismissals'] += row['is_summary_dismissal']
                 except (ValueError, KeyError, TypeError, OSError, sqlite3.Error) as exc:
                     # Never include a JSON parser's raw document or database values in diagnostics.
                     report['errors'].append(dict(prec_id=ident, error=mask_secrets(type(exc).__name__ + ': failed to load record')))
