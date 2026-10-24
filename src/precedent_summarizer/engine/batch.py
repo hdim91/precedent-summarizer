@@ -82,7 +82,10 @@ def parse_custom_id(cid: str) -> tuple[str, str, int]:
 
 
 # ---------------------------------------------------------------- 선정
-def candidates(conn: sqlite3.Connection, variant: str, ids: Optional[list[str]] = None) -> Iterable[sqlite3.Row]:
+def candidates(conn: sqlite3.Connection, variant: str, ids: Optional[list[str]] = None,
+               *, include_attempted: bool = False) -> Iterable[sqlite3.Row]:
+    """include_attempted=False(기본, plan용): 이미 한 번이라도 수거된 시도가 있는 판결은 제외 — 실패 건은 retry로만.
+    include_attempted=True(retry용): 수거된 실패 건도 포함."""
     cols = columns(conn, "precedents")
     date_expr = "COALESCE(p.decision_date, p.decision_date_inferred)" if "decision_date_inferred" in cols else "p.decision_date"
     where = ["p.detail_status='ok'", f"length(p.full_text_clean) >= {MIN_CHARS}",
@@ -90,11 +93,14 @@ def candidates(conn: sqlite3.Connection, variant: str, ids: Optional[list[str]] 
              # 제출됐지만 아직 수거되지 않은 건 중복 제출 방지
              "NOT EXISTS (SELECT 1 FROM batch_items b JOIN batch_runs r USING(batch_id) "
              "WHERE b.prec_id=p.prec_id AND b.variant=? AND r.status!='collected')"]
+    if not include_attempted:  # 수거 완료된 시도가 있으면 신규 계획에서 제외(실패 건 반복 제출 방지, 2026-10-25)
+        where.append("NOT EXISTS (SELECT 1 FROM batch_items b2 JOIN batch_runs r2 USING(batch_id) "
+                     "WHERE b2.prec_id=p.prec_id AND b2.variant=? AND r2.status='collected')")
     if "is_summary_dismissal" in cols:
         where.append("p.is_summary_dismissal=0")
     if variant == "official":  # 판시사항·판결요지가 있는 판결만(없으면 blind와 동일)
         where.append("(p.holdings_clean IS NOT NULL OR p.official_summary_clean IS NOT NULL)")
-    params: list[Any] = [VARIANTS[variant], variant]
+    params: list[Any] = [VARIANTS[variant], variant] + ([] if include_attempted else [variant])
     if ids:
         where.append(f"p.prec_id IN ({','.join('?' * len(ids))})")
         params += ids
@@ -313,7 +319,7 @@ def retry_plan(conn, s: Settings, variant: str, budget: float) -> dict:
     spent, pending = spent_and_pending(conn)
     room = budget - spent - pending
     items, total = [], 0.0
-    for r in candidates(conn, variant, list(model_for)):
+    for r in candidates(conn, variant, list(model_for), include_attempted=True):
         m = model_for[r["prec_id"]]
         extra = len((r["holdings_clean"] or "") + (r["official_summary_clean"] or "")) if variant == "official" else 0
         c = est_cost(m, len(r["full_text_clean"]), extra)

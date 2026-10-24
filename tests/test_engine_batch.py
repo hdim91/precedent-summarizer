@@ -111,6 +111,7 @@ def test_submit_collect_verify_and_retry(tmp_path):
     assert pending == 0 and spent == pytest.approx(2 * actual_cost(s.model_default, {"input_tokens": 1000, "output_tokens": 2000}))
     r = B.retry_plan(conn, s, "blind", budget=10)
     assert r["n"] == 1 and r["_items"][0][1] == s.model_complex
+    assert B.plan(conn, s, "blind", budget=10, max_n=None)["n"] == 0  # 실패 건은 신규 계획에 재포함되지 않음
     B.submit(conn, c, r, attempt=2)
     assert B.retry_plan(conn, s, "blind", budget=10)["n"] == 0  # 재시도는 1회만
 
