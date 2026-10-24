@@ -2,5 +2,5 @@
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark"><title>{% block title %}대법원 판례 연구{% endblock %}</title>
 <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}"><script defer src="{{ url_for('static', path='app.js') }}"></script></head>
-<body><a class="skip" href="#main">본문으로 건너뛰기</a><header class="site-header"><a class="brand" href="/">판례 연구실<span>SUPREME COURT · RESEARCH</span></a><span class="workspace">내부 연구용</span></header>
+<body><a class="skip" href="#main">본문으로 건너뛰기</a><header class="site-header"><a class="brand" href="/"><span class="brand-monogram" aria-hidden="true">判</span><span class="brand-name">판례 연구실<small>SUPREME COURT · RESEARCH</small></span></a><span class="workspace">내부 연구용</span></header>
 <main id="main">{% block content %}{% endblock %}</main><footer>연구용 자동 요약 — 원문을 확인하세요</footer></body></html>

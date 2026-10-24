@@ -15,3 +15,16 @@ for (const ranges of [[], [{start:null,end:null}], [{start:-1,end:3}], [{start:0
 }
 assert.deepEqual(splitByRanges('',[]),[]);
 console.log('splitByRanges: Unicode, overlap, invalid offsets and original preservation passed');
+
+const {minimapPositions} = require('../src/precedent_summarizer/web/static/app.js');
+assert.deepEqual(minimapPositions('가😀나다', [{start:1,end:3}]), [{index:0,start:1,end:3,percent:25}]);
+assert.deepEqual(minimapPositions('abcd', [{start:0,end:1},{start:null,end:null},{start:3,end:4}]), [
+  {index:0,start:0,end:1,percent:0},{index:2,start:3,end:4,percent:75}
+]);
+assert.deepEqual(minimapPositions('',[{start:0,end:1}]), []);
+assert.deepEqual(minimapPositions('abc',[
+  {start:-1,end:1},{start:2,end:2},{start:0,end:4},{start:1.5,end:2},{start:undefined,end:2}
+]), []);
+// Overlapping positions are independent buttons; numbering follows API order, never sorted away.
+assert.deepEqual(minimapPositions('abcdefghij', [{start:8,end:10},{start:1,end:4},{start:1,end:2}]).map(p=>[p.index,p.percent]),[[0,80],[1,10],[2,10]]);
+console.log('minimapPositions: code-point proportions, invalid offsets, stable numbering passed');
