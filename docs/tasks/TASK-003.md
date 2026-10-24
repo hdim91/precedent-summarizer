@@ -2,7 +2,7 @@
 
 - 작성: Claude · 작성일시: 2026-10-24 20:40 KST
 - 담당: Codex · 브랜치: `codex/TASK-003-web-ui`
-- 상태: 대기
+- 상태: 구현·웹/JS 검증 완료, 사용자 PC 실제 화면 검토 대기
 
 ## 목표
 내부 연구자용 웹 화면 2개를 만든다. 데이터는 Claude가 만든 JSON API만 사용한다(서버 로직·SQL 추가 금지).
@@ -51,12 +51,12 @@
 - `src/precedent_summarizer/web/app.py`, `web/highlight.py`, `engine/`, `schemas/`, `load/`, `collect/`, `clients/`, `common/`, `docs/RULES.md`·`INTENT.md`·`DECISIONS.md`, `scripts/hooks/`
 
 ## 보안 체크
-- [ ] 원문·요약 문자열은 전부 이스케이프(`textContent` 사용, `innerHTML`에 데이터 삽입 금지)
-- [ ] 외부 요청은 htmx CDN 1개뿐, API 키·환경값 노출 없음
+- [x] 원문·요약 문자열은 전부 이스케이프(`textContent` 사용, `innerHTML`에 데이터 삽입 금지)
+- [x] 외부 요청은 htmx CDN 1개뿐, API 키·환경값 노출 없음
 
 ## 완료 조건
-- [ ] `tests/test_web_templates.py`: TestClient로 `/`, `/precedents/1` 200 응답, 필수 요소(검색창·필터·요약/원문 패널 컨테이너·푸터 고지) 존재 확인(tmp DB, `tests/test_web.py`의 `make_db` 재사용 가능)
-- [ ] 하이라이트 로직을 JS 순수 함수로 분리(`splitByRanges(text, ranges)`)하고, 같은 입력에 대한 기대 출력 예시를 주석으로 명시
+- [x] `tests/test_web_templates.py`: TestClient로 `/`, `/precedents/1` 200 응답, 필수 요소(검색창·필터·요약/원문 패널 컨테이너·푸터 고지) 존재 확인(tmp DB, `tests/test_web.py`의 `make_db` 재사용 가능)
+- [x] 하이라이트 로직을 JS 순수 함수로 분리(`splitByRanges(text, ranges)`)하고, 같은 입력에 대한 기대 출력 예시를 주석으로 명시
 - [ ] `pytest` 통과
 - [ ] 실제 화면 확인은 사용자 PC에서(Claude가 스크린샷 검토)
 
@@ -64,7 +64,15 @@
 -
 
 ## 완료 보고 (Codex 작성)
-- 완료 일시(KST):
-- 변경 파일:
-- 검증 결과:
-- 남은 문제:
+- 완료 일시(KST): 2026-10-24 20:30 KST
+- 변경 파일: `src/precedent_summarizer/web/templates/base.html`, `index.html`, `detail.html`, `src/precedent_summarizer/web/static/app.css`, `app.js`, `tests/test_web_templates.py`, `tests/test_web_highlight.cjs`, `docs/tasks/TASK-003.md`, `docs/STATE.md`, `docs/worklog/2026-10-24.md`.
+- 구현: API 전용 fetch 목록·통계·20건 페이지·URL 필터 상태, 추정 날짜/모델/미제공 표시. 상세 버전 탭·판단/근거/사실/인용/소수의견/미기재 정보·검증 표시, 원문 구획 목차·법원 작성 접기 영역. 근거 버튼→코드포인트 기반 원문 텍스트 노드 분할/mark·스크롤, 원문 위치 미확인 표시. 모든 데이터 textContent/텍스트 노드 처리, 외부 CDN/라이브러리 사용 없음. 서버·SQL·스키마 변경 없음.
+- 디자인 의도:
+  - 따뜻한 회백색 바탕과 녹청색 강조로 긴 판례를 읽는 문서 열람 환경 구성.
+  - 목록은 표 기반 정보 밀도를 유지하고 통계·검색·필터·결과의 순서를 명확히 구분.
+  - 상세는 요약과 원문을 나란히 배치해 근거를 즉시 대조; 900px 이하에서는 세로 배치.
+  - 원문 줄바꿈·문장 공백은 그대로 보존하고, 시스템 폰트·다크모드·키보드 초점·감소된 모션 설정 지원.
+- 주요 화면: 목록은 전체/본문/버전별 요약 통계와 필터, 요약 한 줄을 함께 제공. 상세는 모델·검증 상태를 요약 상단에 표시하고 근거 버튼과 구획 목차가 원문 강조로 연결됨. 검색 목록 복귀 시 URL 조건 복원.
+- 검증 결과: `src`에서 `python -m pytest ../tests/test_web_templates.py ../tests/test_web.py -q` → 9 passed. Node `--check` 및 JS 순수 함수 테스트 통과(코드포인트/이모지·중첩/인접 범위·null/무효 오프셋·원문 문자열 보존). TestClient tmp DB로 두 페이지 200·필수 컨테이너·정적 파일·이스케이프 구현·다크모드 확인.
+- 전체 pytest: 기존 anthropic 미설치로 테스트 수집 오류. 해당 기존 파일만 제외한 `python -m pytest ../tests --ignore=../tests/test_anthropic_client.py -q`는 103 passed, 2 deselected(live). 실제 DB·키·네트워크 미사용. git diff --check 통과.
+- 남은 문제: 사용자 PC에서 실제 화면·근거 버튼 스크롤·반응형/다크모드 스크린샷 검토 필요. 의존성이 설치된 환경에서 전체 pytest 필요. `.git` 읽기 전용 환경이므로 작업 트리에 유지, 리뷰 후 `codex/TASK-003-web-ui` 브랜치 커밋 필요.
