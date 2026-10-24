@@ -221,3 +221,51 @@ footer { text-align: center; color: var(--muted); border-top: 1px solid var(--li
 }
 
 input::placeholder { color: var(--muted); opacity: 1; }
+/* TASK-003c: compact archive entry, without reducing the reading panels. */
+main:has(#search-form) { padding-top: 20px; }
+.intro { display: flex; align-items: baseline; gap: 20px; margin: 0 0 16px; }
+.intro h1 { font-size: 1.65rem; line-height: 1.3; margin: 0; }
+.intro .eyebrow { font-size: .625rem; }
+.stats { gap: 0; margin-bottom: 16px; border: 1px solid var(--line); border-radius: var(--r1); background: var(--paper); }
+.stat { display: flex; align-items: baseline; gap: 12px; padding: 12px 16px; min-width: 160px; border: 0; border-right: 1px solid var(--line); border-radius: 0; box-shadow: none; }
+.stat:last-child { border-right: 0; }
+.stat strong { font-size: 1.4rem; line-height: 1.2; }
+.stat span:not(.skeleton) { margin-top: 0; font-size: .6875rem; }
+.skeleton-card { align-items: center; }
+.skeleton-card .skeleton { margin: 0; }
+.skeleton-card .skeleton:first-child { height: 20px; width: 30%; }
+#search-form { padding: 16px 20px; box-shadow: var(--shadow-1); }
+.search-label { margin-bottom: 8px; }
+.search-row { padding: 4px; }
+.search-row input { padding: 8px; }
+#search-help { margin: 8px 0 12px; font-size: .75rem; }
+.filter-panel { padding-top: 8px; }
+.filter-footer { margin-top: 8px; }
+.section-heading { margin: 20px 0 8px; }
+#result-count { margin: 0; }
+th, td { padding: 12px; line-height: 1.55; }
+th { padding-block: 10px; }
+.active-filters { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.active-filters[hidden] { display: none; }
+.filter-chip { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); font-size: .75rem; padding: 4px 8px; }
+.case-title-row { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+.case-title-row h1 { flex: 0 1 auto; min-width: 0; }
+.case-title-row > span { flex: 0 0 auto; }
+.case-title-row .badge { font-size: .8125rem; padding: 5px 10px; }
+.court-digest-label { padding: 12px 16px; background: var(--court); border: 1px solid var(--line); border-radius: var(--r1); color: var(--ink); font-size: .8125rem; }
+.court-digest p { font-family: var(--font-record); line-height: 2; }
+.waiting-card { margin-top: 16px; padding: 24px; background: var(--soft); border: 1px solid var(--line); border-radius: var(--r1); }
+.waiting-card p { color: var(--muted); margin-bottom: 0; font-size: .875rem; }
+@media(max-width:900px) { .intro { flex-direction: column; gap: 8px; } }
+@media(max-width:600px) {
+  .stats { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .stat { min-width: 0; gap: 8px; flex-wrap: wrap; border-bottom: 1px solid var(--line); padding: 12px; }
+  .stat strong { font-size: 1.25rem; }
+  #search-form { padding: 16px; }
+  td { padding: 0; }
+  td.empty { padding: 24px 0; }
+  .case-title-row { gap: 0; }
+}
+@media print {
+  .waiting-card, .court-digest-label { background: #fff; }
+}

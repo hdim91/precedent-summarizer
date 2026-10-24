@@ -2,7 +2,7 @@
 
 - 작성: Claude · 작성일시: 2026-10-24 23:55 KST
 - 담당: Codex · 브랜치: `codex/TASK-003c-polish`
-- 상태: 대기
+- 상태: 구현·자동 검증 완료, PC 화면 재검토 대기
 - 근거: Claude가 시범 요약 3건으로 만든 데모 DB에서 1440×960 라이트/다크·390×844 모바일 스크린샷 검토, 사용자 PC 상세 화면(요약 없음) 스크린샷(23:35)
 
 ## 잘된 점 (유지)
@@ -22,14 +22,18 @@
 - `base.html`의 웹폰트 링크(Claude 추가)는 유지.
 
 ## 완료 조건
-- [ ] 근거 번호·미니맵 번호 표시 순서 일치 테스트(Node), 기존 테스트 통과
-- [ ] 완료 보고에 1~4 처리 방식
+- [x] 근거 번호·미니맵 번호 표시 순서 일치 테스트(Node), 기존 테스트 통과
+- [x] 완료 보고에 1~4 처리 방식
 
 ## 질문 (Codex → Claude)
 -
 
 ## 완료 보고 (Codex 작성)
-- 완료 일시(KST):
-- 변경 파일:
-- 검증 결과:
-- 남은 문제:
+- 완료 일시(KST): 2026-10-24 23:41 KST
+- 변경 파일: `src/precedent_summarizer/web/static/app.js`, `app.css`, `DESIGN.md`, `src/precedent_summarizer/web/templates/index.html`, `detail.html`, `tests/test_web_highlight.cjs`, `docs/tasks/TASK-003c.md`, `docs/STATE.md`, `docs/worklog/2026-10-24.md`.
+- 1. 근거 번호: 순수 함수 evidenceDisplayOrder가 화면 블록 순서(결론→쟁점 판단→사실→원심→인용→소수의견)와 블록 내 인용 순서로 원본 span 인덱스를 정렬. 칩·minimapPositions가 동일 displayOrder를 사용하고, null 위치도 번호를 유지하면서 위치 미확인 표시(미니맵 점 제외). 첫 결론 근거는 ①. 버전 변경 시 전체 순서 재계산.
+- 2. 요약 없음: 좌측에 법원 작성 판시사항·판결요지를 기본 표시하며 “법원 작성 요지 · 자동 요약 아님” 라벨 적용. 좌측 표시 필드는 하단 접기 카드에서 제외. 둘 다 없으면 “요약 대기 중 — 원문을 확인하세요” 카드. 요약용 탭/근거 안내는 숨기고 판결 원문은 유지.
+- 3. 목록 밀도: 표제를 작은 한 줄 형태로 축소하고 설명 제거, 통계 숫자+라벨 가로 띠, 검색 패딩/표 행 간격 축소. 필터 기본 접힘, 활성 필터가 있으면 펼침 및 개별 해제 칩 표시(URL 동기화). 모바일 2열 통계·필터 유지. 1440×960의 실제 5행 노출은 PC 스크린샷 재검토 필요.
+- 4. 결론 배지: 사건명 옆 case-title-row로 배치. 선택된 요약 버전 응답의 결론 유형 표시, 버전 전환 시 이전 배지 즉시 제거 및 응답 순서 역전 방지 유지.
+- 검증 결과: 웹 TestClient+Node 9 passed. Node에서 API 순서와 다른 결론 우선 순서·블록 내부 순서·칩과 미니맵 번호 일치·null 번호 유지·법원 요지 유무/문자 보존 테스트. splitByRanges/Unicode 오프셋 기존 검증 유지. `python -m pytest ../tests --ignore=../tests/test_anthropic_client.py -q` → 103 passed, 2 deselected(live). 기존 anthropic 미설치 테스트 파일만 제외. JS 구문·git diff --check 통과. base.html/웹폰트 링크 및 서버 코드 변경 없음.
+- 남은 문제: 사용자 PC 1440×960 라이트/다크·모바일 및 실제 요약 없는 상세 화면 재검토 필요. 실제 DB/API 미사용. `.git` 읽기 전용 환경이므로 작업 트리에 유지, 리뷰 후 `codex/TASK-003c-polish` 브랜치 커밋 필요.
