@@ -137,6 +137,18 @@ def test_chunks_split_by_bytes(tmp_path):
     assert [len(c) for c, _ in chunks] == [2, 2, 1]
 
 
+def test_failures_reports_and_refetches_reason(tmp_path):
+    conn = make_db(tmp_path, [dict(id="1", date="2025-01-01"), dict(id="2", date="2025-01-02")])
+    s = settings(tmp_path); c = client()
+    B.submit(conn, c, B.plan(conn, s, "blind", budget=10, max_n=None)); B.collect(conn, c, s)
+    stored = conn.execute("SELECT error FROM batch_items WHERE prec_id='2'").fetchone()[0]
+    assert json.loads(stored)["evidence"] == "2/3"  # 사유가 저장됨
+    conn.execute("UPDATE batch_items SET error=NULL WHERE prec_id='2'"); conn.commit()  # 구버전 수거 건 가정
+    rows = B.failures(conn, c, s)
+    assert len(rows) == 1 and rows[0]["prec_id"] == "2"
+    assert json.loads(rows[0]["error"])["missing"][0]["path"] == "facts.evidence[0]"
+
+
 def test_custom_id_format():
     cid = B.custom_id("619499", "official", "claude-opus-5-5", 2)
     assert cid == "619499-o-o-2" and B.parse_custom_id(cid) == ("619499", "official", 2)

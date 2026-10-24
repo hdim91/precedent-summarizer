@@ -7,6 +7,7 @@
   python -m precedent_summarizer.engine.batch collect           # 끝난 배치 수거·검증·저장, 검증 실패는 재시도 큐
   python -m precedent_summarizer.engine.batch retry   --variant blind [--yes]   # 검증 실패 건 상위 모델로 1회 재요청
   python -m precedent_summarizer.engine.batch spend             # 누적 지출
+  python -m precedent_summarizer.engine.batch failures [--batch ID]   # 실패 건과 사유(사유 미저장 건은 API 결과 재조회·재검증)
 
 정책
 - 선정: detail_status=ok, 본문 300자 이상, 심리불속행 제외(컬럼 있을 때), 이미 해당 버전 요약이 있는 건 제외.
@@ -221,8 +222,9 @@ def handle_result(conn, s: Settings, batch_id: str, res) -> dict:
                      ("succeeded", cost, mask_secrets(f"{type(exc).__name__}: {exc}")[:300], batch_id, cid))
         out["passed"] = False
         return out
-    conn.execute("UPDATE batch_items SET result_type='succeeded', verify_passed=?, cost_usd=? "
-                 "WHERE batch_id=? AND custom_id=?", (int(v.passed), cost, batch_id, cid))
+    detail = None if v.passed else json.dumps(_fail_detail(v), ensure_ascii=False)
+    conn.execute("UPDATE batch_items SET result_type='succeeded', verify_passed=?, cost_usd=?, error=? "
+                 "WHERE batch_id=? AND custom_id=?", (int(v.passed), cost, detail, batch_id, cid))
     if v.passed:  # RULES 5장: 검증 통과한 요약만 저장
         conn.execute("INSERT OR REPLACE INTO summaries(prec_id,version,model,summary_json,verify_json,verify_passed,"
                      "input_tokens,output_tokens,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -230,6 +232,46 @@ def handle_result(conn, s: Settings, batch_id: str, res) -> dict:
                       json.dumps(v.to_dict(), ensure_ascii=False), 1, usage["input_tokens"], usage["output_tokens"], now()))
     out["passed"] = v.passed
     return out
+
+
+def _fail_detail(v) -> dict:
+    """검증 실패 사유 요약(원문 인용은 앞 80자만)."""
+    return {"evidence": f"{v.evidence_found}/{v.evidence_total}",
+            "missing": v.evidence_missing[:5], "disposition": v.disposition_check, "notes": v.notes}
+
+
+def failures(conn, client, s: Settings, batch_id: Optional[str] = None) -> list[dict]:
+    """실패 건 목록. 사유가 저장되지 않은 검증 실패 건은 배치 결과를 API에서 다시 받아 재검증한다(과금 없음)."""
+    q = ("SELECT b.batch_id, b.custom_id, b.prec_id, b.model, b.attempt, b.result_type, b.verify_passed, b.error, "
+         "p.case_no, p.case_type_name, p.decision_date, length(p.full_text_clean) AS chars "
+         "FROM batch_items b JOIN precedents p USING(prec_id) "
+         "WHERE (b.verify_passed=0 OR (b.result_type IS NOT NULL AND b.result_type!='succeeded'))")
+    rows = [dict(r) for r in conn.execute(q + (" AND b.batch_id=?" if batch_id else "") + " ORDER BY b.batch_id",
+                                          ((batch_id,) if batch_id else ()))]
+    need = {}
+    for r in rows:
+        if r["verify_passed"] == 0 and not r["error"]:
+            need.setdefault(r["batch_id"], set()).add(r["custom_id"])
+    for bid, cids in need.items():
+        for res in client.messages.batches.results(bid):
+            cid = _get(res, "custom_id")
+            if cid not in cids:
+                continue
+            pid, _variant, _a = parse_custom_id(cid)
+            row = conn.execute("SELECT full_text_clean, sections_json, ref_statutes_clean FROM precedents "
+                               "WHERE prec_id=?", (pid,)).fetchone()
+            try:
+                summary = parse_output(_get(_get(res, "result"), "message"))
+                v = verify(summary, full_text_clean=row["full_text_clean"],
+                           sections=json.loads(row["sections_json"] or "[]"), ref_statutes_clean=row["ref_statutes_clean"])
+                detail = _fail_detail(v)
+                detail["disposition_type"] = (summary.get("disposition") or {}).get("type")
+            except Exception as exc:  # noqa: BLE001
+                detail = {"parse_error": mask_secrets(f"{type(exc).__name__}: {exc}")[:200]}
+            for r in rows:
+                if r["batch_id"] == bid and r["custom_id"] == cid:
+                    r["error"] = json.dumps(detail, ensure_ascii=False)
+    return rows
 
 
 def collect(conn, client, s: Settings) -> list[dict]:
@@ -298,7 +340,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             sp.add_argument("--ids-file")
         if name != "plan":
             sp.add_argument("--yes", action="store_true", help="확인 없이 제출")
-    sub.add_parser("status"); sub.add_parser("collect"); sub.add_parser("spend")
+    sub.add_parser("status"); sub.add_parser("collect")
+    sp = sub.add_parser("spend"); sp.add_argument("--budget", type=float)
+    sp = sub.add_parser("failures"); sp.add_argument("--batch")
     a = ap.parse_args(argv)
     install_log_masking()
     s = get_settings()
@@ -325,6 +369,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             print(dict(r))
     elif a.cmd == "collect":
         for r in collect(conn, make_client(s), s):
+            print(json.dumps(r, ensure_ascii=False))
+    elif a.cmd == "failures":
+        for r in failures(conn, make_client(s), s, a.batch):
             print(json.dumps(r, ensure_ascii=False))
     elif a.cmd == "spend":
         spent, pending = spent_and_pending(conn)
