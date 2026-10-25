@@ -13,7 +13,8 @@ BATCH_PRICES: dict[str, tuple[float, float, float, float]] = {
 }
 SYSTEM_TOKENS = 4700        # 시스템 프롬프트 + 스키마(캐시 대상)
 META_TOKENS = 250
-SAFETY = 1.15               # 추정치 상향 보정(실측 분산 대비)
+SAFETY = 0.80               # 보정 계수. 2026-10-25 본 배치 2,313건 실측: 실제/무보정 추정 = 44.93/64.99 ≈ 0.69
+                            # (평가 배치 0.51~0.53). 0.80이면 추정이 실제보다 약 15% 높아 여전히 보수적(이전 1.15)
 
 
 def est_tokens(chars: int, extra_chars: int = 0) -> tuple[int, int]:
