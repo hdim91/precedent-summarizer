@@ -11,6 +11,9 @@ def test_index_template_and_static(tmp_path):
                       'id="case_type"', 'id="data_source"', 'id="has_summary"', 'id="version"',
                       'id="stats"', 'id="results-body"', 'id="pagination"', '연구용 자동 요약 — 원문을 확인하세요'):
             assert token in response.text
+        assert response.text.index('<option value="v1o">') < response.text.index('<option value="v1">')
+        assert 'v1o · 판결요지 참고(기본)' in response.text
+        assert 'v1 · 블라인드(비교용)' in response.text
         assert client.get('/static/app.css').status_code==200
         script=client.get('/static/app.js')
         assert script.status_code==200

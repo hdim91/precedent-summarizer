@@ -57,3 +57,17 @@ assert.deepEqual(courtDigestSections({holdings_clean:'  원문 그대로  ',offi
 assert.deepEqual(courtDigestSections({holdings_clean:'  ',official_summary_clean:null}),[]);
 assert.equal(courtDigestSections({official_summary_clean:'법원 요지'})[0].field,'official_summary_clean');
 console.log('display order: conclusion first, matching map numbers; court digest fallback passed');
+
+const {preferredVersions,otherVersionLabel,SUMMARY_VERSION_LABELS}=require('../src/precedent_summarizer/web/static/app.js');
+const versions=[{version:'v1'},{version:'unknown'},{version:'v1o'}];
+assert.deepEqual(preferredVersions(versions).map(s=>s.version),['v1o','v1']);
+assert.equal(versions[0].version,'v1'); // API metadata is not mutated.
+assert.equal(preferredVersions([{version:'v1'}])[0].version,'v1');
+assert.deepEqual(preferredVersions(null),[]);
+assert.equal(otherVersionLabel([{version:'v1'}],'v1o'),'v1만 있음');
+assert.equal(otherVersionLabel([{version:'v1o'}],'v1'),'v1o만 있음');
+assert.equal(otherVersionLabel(versions,'v1o'),null);
+assert.equal(otherVersionLabel([],'v1o'),null);
+assert.equal(SUMMARY_VERSION_LABELS.v1o,'v1o · 판결요지 참고(기본)');
+assert.equal(SUMMARY_VERSION_LABELS.v1,'v1 · 블라인드(비교용)');
+console.log('summary versions: official-first, blind fallback, alternative-only badges passed');
