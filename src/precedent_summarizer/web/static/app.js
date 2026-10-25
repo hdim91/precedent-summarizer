@@ -120,6 +120,9 @@ if(typeof document !== 'undefined') {
             availabilityJobs.push(async()=>{
               try{
                 let versions=summaryVersions.get(item.prec_id);
+                // 목록 API의 summary_versions(쉼표 구분)를 우선 사용 — 상세 API 추가 호출 없음(2026-10-25 Claude)
+                if(!versions&&typeof item.summary_versions==='string')versions=item.summary_versions.split(',').filter(Boolean).map(version=>({version}));
+                if(!versions&&item.summary_versions===null)versions=[];
                 if(!versions){const detail=await api('/api/precedents/'+encodeURIComponent(item.prec_id),currentController.signal);versions=detail.summaries||[];summaryVersions.set(item.prec_id,versions);}
                 if(currentController.signal.aborted)return;
                 const label=otherVersionLabel(versions,p.get('version'));

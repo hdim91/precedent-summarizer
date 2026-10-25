@@ -52,6 +52,7 @@ def test_api_list_order_filters_and_summary(tmp_path):
     cl = TestClient(create_app(make_db(tmp_path)))
     r = cl.get("/api/precedents").json()
     assert [x["prec_id"] for x in r["items"]] == ["1", "2", "3"] and r["items"][0]["one_line"] == "요약"
+    assert r["items"][0]["summary_versions"] == "v1" and r["items"][1]["summary_versions"] is None
     assert [x["prec_id"] for x in cl.get("/api/precedents", params={"has_summary": "true"}).json()["items"]] == ["1"]
     assert [x["prec_id"] for x in cl.get("/api/precedents", params={"year_from": 2024, "year_to": 2024}).json()["items"]] == ["2"]
     assert cl.get("/api/precedents", params={"q": "요양불승인"}).json()["total"] == 1

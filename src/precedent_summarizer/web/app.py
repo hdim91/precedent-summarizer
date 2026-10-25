@@ -102,8 +102,9 @@ def create_app(db_path: Optional[Path] = None) -> FastAPI:
             where.append("p.data_source = ?"); params.append(data_source)
         sum_join = ("LEFT JOIN summaries s ON s.prec_id = p.prec_id AND s.version = ?"
                     if _has_table(c, "summaries") else "")
-        sum_cols = ", s.model AS summary_model, json_extract(s.summary_json, '$.one_line') AS one_line" if sum_join else \
-                   ", NULL AS summary_model, NULL AS one_line"
+        sum_cols = (", s.model AS summary_model, json_extract(s.summary_json, '$.one_line') AS one_line, "
+                    "(SELECT group_concat(s2.version) FROM summaries s2 WHERE s2.prec_id = p.prec_id) AS summary_versions"
+                    if sum_join else ", NULL AS summary_model, NULL AS one_line, NULL AS summary_versions")
         if has_summary is not None and sum_join:
             where.append("s.prec_id IS NOT NULL" if has_summary else "s.prec_id IS NULL")
         sql_from = f"FROM precedents p {join} {sum_join} WHERE {' AND '.join(where)}"
