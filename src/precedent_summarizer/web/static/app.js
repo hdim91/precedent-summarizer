@@ -54,14 +54,26 @@ function courtDigestSections(data) {
     .filter(([field])=>typeof data[field]==='string' && data[field].trim())
     .map(([field,title])=>({field,title,text:data[field]}));
 }
-if(typeof module !== 'undefined')module.exports={splitByRanges,minimapPositions,evidenceDisplayOrder,courtDigestSections};
+const SUMMARY_VERSION_ORDER=['v1o','v1'];
+const SUMMARY_VERSION_LABELS={v1o:'v1o · 판결요지 참고(기본)',v1:'v1 · 블라인드(비교용)'};
+function preferredVersions(summaries) {
+  return (summaries||[]).filter(s=>SUMMARY_VERSION_ORDER.includes(s.version))
+    .slice().sort((a,b)=>SUMMARY_VERSION_ORDER.indexOf(a.version)-SUMMARY_VERSION_ORDER.indexOf(b.version));
+}
+function otherVersionLabel(summaries,selectedVersion) {
+  const versions=preferredVersions(summaries).map(s=>s.version);
+  if(versions.includes(selectedVersion))return null;
+  const other=versions.find(version=>version!==selectedVersion);
+  return other?other+'만 있음':null;
+}
+if(typeof module !== 'undefined')module.exports={splitByRanges,minimapPositions,evidenceDisplayOrder,courtDigestSections,preferredVersions,otherVersionLabel,SUMMARY_VERSION_LABELS};
 
 if(typeof document !== 'undefined') {
   const $ = id=>document.getElementById(id);
   const el = (tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined&&text!==null)n.textContent=String(text);if(cls)n.className=cls;return n;};
   const badge = (text,cls='')=>el('span',text,'badge '+cls);
   const modelName = model=>/opus/i.test(model||'')?'Opus':/sonnet/i.test(model||'')?'Sonnet':(model||'요약 없음');
-  const labels = {v1:'v1 · 블라인드',v1o:'v1o · 판결요지 참고'};
+  const labels=SUMMARY_VERSION_LABELS;
   async function api(url,signal) {const response=await fetch(url,{signal,headers:{Accept:'application/json'}});if(!response.ok)throw new Error(response.status===404?'해당 판례 또는 요약을 찾을 수 없습니다.':'자료를 불러오지 못했습니다. 잠시 후 다시 시도하세요.');return response.json();}
   function error(node,err){node.hidden=false;node.replaceChildren(el('p',err.message));const retry=el('button','다시 불러오기');retry.type='button';retry.addEventListener('click',()=>location.reload());node.append(retry);}
   function skeleton(node,lines=3){node.replaceChildren();for(let i=0;i<lines;i++)node.append(el('span',null,'skeleton'+(i===lines-1?' short':'')));}
@@ -72,11 +84,12 @@ if(typeof document !== 'undefined') {
   const form=$('search-form');
   if(form){
     let controller;
+    const summaryVersions=new Map();
     const keys=['q','year_from','year_to','case_type','data_source','has_summary','version'];
     function hydrate(){
       const p=new URLSearchParams(location.search);
-      for(const k of keys)form.elements[k].value=p.get(k)||(k==='version'?'v1':'');
-      const active=keys.filter(k=>k!=='q' && p.get(k) && !(k==='version'&&p.get(k)==='v1'));
+      for(const k of keys)form.elements[k].value=p.get(k)||(k==='version'?'v1o':'');
+      const active=keys.filter(k=>k!=='q' && p.get(k) && !(k==='version'&&p.get(k)==='v1o'));
       form.querySelector('.filter-panel').open=active.length>0;
       const chips=$('active-filters');chips.replaceChildren();
       const names={year_from:'선고연도부터',year_to:'선고연도까지',case_type:'사건종류',data_source:'출처',has_summary:'요약',version:'버전'};
@@ -90,17 +103,30 @@ if(typeof document !== 'undefined') {
     async function listing(){
       hydrate();if(controller)controller.abort();controller=new AbortController();const currentController=controller;
       const p=new URLSearchParams(location.search);for(const key of [...p.keys()])if(!keys.includes(key)&&key!=='page')p.delete(key);
-      p.set('size','20');if(!p.has('version'))p.set('version','v1');
+      p.set('size','20');if(!p.has('version'))p.set('version','v1o');
       $('list-error').hidden=true;$('result-count').textContent='불러오는 중';$('results-body').setAttribute('aria-busy','true');const loadingRow=el('tr');const loadingCell=el('td');loadingCell.colSpan=7;skeleton(loadingCell);loadingRow.append(loadingCell);$('results-body').replaceChildren(loadingRow);
       try{
         const data=await api('/api/precedents?'+p,currentController.signal);
-        const rows=[];
+        const rows=[],availabilityJobs=[];
         for(const item of data.items){
           const tr=el('tr');const columns=['선고일','사건번호','사건명','사건종류','출처','요약 상태','한 줄 요약'];let column=0;const td=()=>{const n=el('td');n.dataset.label=columns[column++];tr.append(n);return n;};
           td().append(dateCell(item));td().textContent=item.case_no||'사건번호 없음';
           const a=el('a',item.case_name||'사건명 없음');a.href='/precedents/'+encodeURIComponent(item.prec_id)+'?'+new URLSearchParams({return:location.search});td().append(a);
           td().textContent=item.case_type_name||'—';td().textContent=item.data_source||'—';
-          const status=td();status.append(item.summary_model?badge(modelName(item.summary_model),/opus/i.test(item.summary_model)?'opus':'sonnet'):el('span','요약 없음','muted'));
+          const status=td();
+          if(item.summary_model)status.append(badge(modelName(item.summary_model),/opus/i.test(item.summary_model)?'opus':'sonnet'));
+          else {
+            const availability=el('span','선택 버전 요약 없음','muted');status.append(availability);
+            availabilityJobs.push(async()=>{
+              try{
+                let versions=summaryVersions.get(item.prec_id);
+                if(!versions){const detail=await api('/api/precedents/'+encodeURIComponent(item.prec_id),currentController.signal);versions=detail.summaries||[];summaryVersions.set(item.prec_id,versions);}
+                if(currentController.signal.aborted)return;
+                const label=otherVersionLabel(versions,p.get('version'));
+                availability.replaceChildren(label?badge(label,'alternate-version'):document.createTextNode('요약 없음'));
+              }catch(err){if(err.name!=='AbortError')availability.textContent='선택 버전 요약 없음 · 다른 버전 확인 불가';}
+            });
+          }
           if(item.detail_status==='unavailable')status.append(el('div','본문 미제공 ('+(item.data_source||'출처 미상')+')','unavailable'));
           const excerpt=el('span',item.one_line||'—','summary-excerpt');td().append(excerpt);rows.push(tr);
         }
@@ -111,6 +137,11 @@ if(typeof document !== 'undefined') {
         if(data.page>1)link(data.page-1,'이전');
         for(let i=Math.max(1,data.page-2);i<=Math.min(pages,data.page+2);i++)link(i,String(i),i===data.page);
         if(data.page<pages)link(data.page+1,'다음');
+        // Existing detail API only; bound requests and reuse metadata across pagination.
+        let jobIndex=0;
+        await Promise.all(Array.from({length:Math.min(4,availabilityJobs.length)},async()=>{
+          while(jobIndex<availabilityJobs.length&&!currentController.signal.aborted){const job=availabilityJobs[jobIndex++];await job();}
+        }));
       }catch(err){if(err.name!=='AbortError'){error($('list-error'),err);$('result-count').textContent='조회 실패';$('results-body').replaceChildren();$('pagination').replaceChildren();}}
       finally{if(!currentController.signal.aborted)$('results-body').removeAttribute('aria-busy');}
     }
@@ -194,7 +225,7 @@ if(typeof document !== 'undefined') {
       const meta=$('case-meta');
       for(const [key,value] of [['사건번호',data.case_no],['법원',data.court_name],['선고일',null],['사건종류',data.case_type_name],['출처',data.data_source]]){const n=el('div');n.append(el('dt',key));const dd=el('dd',value||'—');if(key==='선고일')dd.replaceChildren(dateCell(data));n.append(dd);meta.append(n);}
       for(const section of data.sections||[]){const b=el('button','【'+section.header+'】');b.type='button';b.addEventListener('click',()=>{buttons.forEach(n=>n.setAttribute('aria-pressed','false'));$('evidence-status').textContent='원문 구획: '+section.header;focusRange({start:section.start,end:section.end});});$('section-nav').append(b);}
-      const versions=(data.summaries||[]).filter(s=>['v1','v1o'].includes(s.version));
+      const versions=preferredVersions(data.summaries);
       const digest=versions.length?[]:courtDigestSections(data);
       for(const [field,label] of [['holdings_clean','판시사항'],['official_summary_clean','판결요지 (법원 작성)'],['ref_statutes_clean','참조조문'],['ref_precedents_clean','참조판례']]){if(digest.some(item=>item.field===field))continue;const n=el('details');const heading=el('summary',label);heading.append(badge('법원 작성','court-label'));n.append(heading,el('pre',data[field]||'수록된 내용 없음'));$('court-materials').append(n);}
       for(const s of versions){const b=el('button',labels[s.version]);b.type='button';b.id='tab-'+s.version;b.dataset.version=s.version;b.setAttribute('role','tab');b.setAttribute('aria-controls','summary-content');b.addEventListener('click',()=>summary(s.version));b.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const tabs=[...$('summary-tabs').children];const i=tabs.indexOf(b);const next=event.key==='Home'?tabs[0]:event.key==='End'?tabs.at(-1):tabs[(i+(event.key==='ArrowRight'?1:tabs.length-1))%tabs.length];next.focus();next.click();});$('summary-tabs').append(b);}

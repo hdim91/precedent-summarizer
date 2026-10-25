@@ -7,7 +7,7 @@
 <label>사건종류<input id="case_type" name="case_type" list="case-types" placeholder="전체"><datalist id="case-types"><option>민사</option><option>형사</option><option>일반행정</option><option>세무</option><option>가사</option><option>특허</option></datalist></label>
 <label>출처<select id="data_source" name="data_source"><option value="">전체 출처</option></select></label>
 <label>요약 상태<select id="has_summary" name="has_summary"><option value="">전체</option><option value="true">요약 있음</option><option value="false">요약 없음</option></select></label>
-<label>요약 버전<select id="version" name="version"><option value="v1">v1 · 블라인드</option><option value="v1o">v1o · 판결요지 참고</option></select></label></div></details>
+<label>요약 버전<select id="version" name="version"><option value="v1o">v1o · 판결요지 참고(기본)</option><option value="v1">v1 · 블라인드(비교용)</option></select></label></div></details>
 <div id="active-filters" class="active-filters" aria-label="활성 검색 필터" hidden></div><div class="filter-footer"><a href="/">검색 조건 초기화</a><span class="small muted">선택한 버전의 요약을 표시합니다.</span></div></form>
 <section class="results" aria-labelledby="results-title"><div class="section-heading"><h2 id="results-title">판례 목록</h2><p id="result-count" role="status" aria-live="polite">불러오는 중</p></div>
 <div id="list-error" class="error" role="alert" hidden></div><div class="table-wrap"><table><caption class="sr-only">검색된 판례와 요약 상태</caption><thead><tr><th>선고일</th><th>사건번호</th><th>사건명</th><th>사건종류</th><th>출처</th><th>요약 상태</th><th>한 줄 요약</th></tr></thead><tbody id="results-body"></tbody></table></div><nav id="pagination" class="pagination" aria-label="검색 결과 페이지"></nav></section>

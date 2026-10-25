@@ -269,3 +269,5 @@ th { padding-block: 10px; }
 @media print {
   .waiting-card, .court-digest-label { background: #fff; }
 }
+
+.badge.alternate-version { color: var(--muted); background: transparent; border: 1px dashed var(--line); font-weight: 400; }
