@@ -23,7 +23,7 @@ dev = ["pytest>=8"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-precedent_summarizer = ["schemas/*.sql"]
+precedent_summarizer = ["schemas/*.sql", "export/assets/*.js", "web/templates/*.html", "web/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
